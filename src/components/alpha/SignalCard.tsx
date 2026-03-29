@@ -147,7 +147,8 @@ export default function SignalCard({ signal, cash = 10000 }: { signal: RankedSig
         <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
           <div style={{ fontSize: 10, fontWeight: 700, color, letterSpacing: '0.05em', marginBottom: 6 }}>
             {signal.sportsContext.sport.toUpperCase()}
-            {signal.sportsContext.round ? ` — ${signal.sportsContext.round}` : ''}
+            {signal.sportsContext.competition ? ` — ${signal.sportsContext.competition}` : ''}
+            {signal.sportsContext.round ? ` · ${signal.sportsContext.round}` : ''}
             {signal.sportsContext.seedMatchup ? ` · Seed ${signal.sportsContext.seedMatchup[0]} vs ${signal.sportsContext.seedMatchup[1]}` : ''}
             {signal.sportsContext.region ? ` · ${signal.sportsContext.region}` : ''}
           </div>
@@ -170,6 +171,11 @@ export default function SignalCard({ signal, cash = 10000 }: { signal: RankedSig
             ))}
           </div>
         </div>
+      )}
+
+      {/* Probability breakdown panel (sports/NCAA signals) */}
+      {signal.sportsExplanation && (
+        <ProbabilityBreakdown explanation={signal.sportsExplanation} color={color} />
       )}
 
       {/* Confidence Interval slider */}
@@ -250,6 +256,83 @@ function StatPill({ label, value, color }: { label: string; value: string; color
     <div>
       <div data-mono style={{ fontSize: 12, fontWeight: 700, color }}>{value}</div>
       <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{label}</div>
+    </div>
+  );
+}
+
+function ProbabilityBreakdown({ explanation, color }: { explanation: RankedSignal['sportsExplanation']; color: string }) {
+  if (!explanation) return null;
+  const { baseProbability, marketImpliedProbability, adjustments, finalProbability, edgePoints, confidenceReason, riskReason } = explanation;
+  const edgeColor = edgePoints >= 0 ? 'var(--green)' : 'var(--red)';
+
+  return (
+    <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
+      <div style={{ fontSize: 10, fontWeight: 800, color, letterSpacing: '0.06em', marginBottom: 8 }}>
+        PROBABILITY BREAKDOWN
+      </div>
+
+      {/* Base → Final bar */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>{(baseProbability * 100).toFixed(1)}%</div>
+          <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>Base</div>
+        </div>
+        <div style={{ flex: 1, margin: '0 10px', position: 'relative', height: 4, background: 'var(--border)', borderRadius: 2 }}>
+          <div style={{
+            position: 'absolute', top: 0, left: 0, height: 4, borderRadius: 2,
+            width: `${Math.min(100, finalProbability * 100)}%`,
+            background: `linear-gradient(90deg, ${color}88, ${color})`,
+          }} />
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color }}>{(finalProbability * 100).toFixed(1)}%</div>
+          <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>Model</div>
+        </div>
+      </div>
+
+      {/* Market comparison */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, padding: '4px 8px', background: `${edgeColor}11`, borderRadius: 6, border: `1px solid ${edgeColor}33` }}>
+        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+          Market: {(marketImpliedProbability * 100).toFixed(1)}%
+        </span>
+        <span style={{ fontSize: 10, fontWeight: 800, color: edgeColor }}>
+          Edge: {edgePoints >= 0 ? '+' : ''}{edgePoints.toFixed(1)}pp
+        </span>
+      </div>
+
+      {/* Adjustment factors */}
+      {adjustments.length > 0 && (
+        <div style={{ marginBottom: 6 }}>
+          {adjustments.map((adj, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '3px 0', borderBottom: i < adjustments.length - 1 ? '1px solid var(--border)' : 'none' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text)' }}>{adj.label}</div>
+                <div style={{ fontSize: 9, color: 'var(--text-muted)', lineHeight: 1.3 }}>{adj.reason}</div>
+              </div>
+              <span style={{
+                fontSize: 10, fontWeight: 800, marginLeft: 8, whiteSpace: 'nowrap',
+                color: adj.delta >= 0 ? 'var(--green)' : 'var(--red)',
+              }}>
+                {adj.delta >= 0 ? '+' : ''}{(adj.delta * 100).toFixed(1)}pp
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Confidence & risk reasons */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {confidenceReason && confidenceReason !== 'standard model output' && (
+          <div style={{ fontSize: 9, color: 'var(--cyan)', background: 'var(--cyan-dim)', padding: '2px 6px', borderRadius: 4 }}>
+            {confidenceReason}
+          </div>
+        )}
+        {riskReason && riskReason !== 'no elevated risk factors' && (
+          <div style={{ fontSize: 9, color: '#eab308', background: '#eab30811', padding: '2px 6px', borderRadius: 4 }}>
+            {riskReason}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

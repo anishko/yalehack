@@ -68,12 +68,29 @@ export interface PlayerStatus {
 
 export interface SportsContext {
   sport: string;
+  competition?: string;            // 'NCAA Tournament' | 'Regular Season' | etc.
   teams: string[];
   keyPlayers: PlayerStatus[];
   seedMatchup?: [number, number];  // March Madness seed numbers
   region?: string;                 // tournament bracket region
   round?: string;                  // e.g. "Sweet 16", "Elite Eight"
   efficiencyDelta?: number;        // offensive efficiency diff
+}
+
+// ─── Sports explainability layer ─────────────────────────────────────────────
+
+export interface SportsExplanation {
+  baseProbability: number;          // seed / strength prior
+  marketImpliedProbability: number; // from Polymarket price
+  adjustments: Array<{
+    label: string;
+    delta: number;                  // probability adjustment in decimal (e.g., 0.03 = +3pp)
+    reason: string;
+  }>;
+  finalProbability: number;
+  edgePoints: number;               // (final - market) * 100, in percentage points
+  confidenceReason: string;
+  riskReason: string;
 }
 
 export interface RankedSignal {
@@ -94,7 +111,8 @@ export interface RankedSignal {
   marketPrice?: number;         // live YES price at signal time
   relatedAsset?: string;       // for CROSS_DOMAIN
   intelBoost?: number;         // from verified intel sources
-  sportsContext?: SportsContext; // for SPORTS / MARCH_MADNESS
+  sportsContext?: SportsContext;      // for SPORTS / MARCH_MADNESS
+  sportsExplanation?: SportsExplanation; // transparent probability breakdown
 }
 
 // ─── Strategy Performance ─────────────────────────────────────────────────────
@@ -137,6 +155,7 @@ export interface BacktestTrade {
   pnl: number;
   strategy: ScannerType;
   confidence?: number; // signal confidence at entry (0-100)
+  category?: string;   // market category for breakdown
 }
 
 export interface MonteCarloResult {

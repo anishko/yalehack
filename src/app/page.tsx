@@ -12,53 +12,52 @@ import CategoryFilter from '@/components/shared/CategoryFilter';
 import { SkeletonCard } from '@/components/shared/Skeleton';
 import type { RankedSignal, PolymarketMarket } from '@/types';
 
-function SportsTab({ signals, loading, cash }: { signals: RankedSignal[]; loading: boolean; cash: number }) {
-  const sportsSignals      = signals.filter(s => s.scannerType === 'SPORTS');
-  const marchSignals       = signals.filter(s => s.scannerType === 'MARCH_MADNESS');
-  const allSports          = [...marchSignals, ...sportsSignals]; // March Madness first
+function SportsTab({ signals, loading, scanning, cash }: { signals: RankedSignal[]; loading: boolean; scanning: boolean; cash: number }) {
+  const sportsSignals = signals.filter(s => s.scannerType === 'SPORTS');
+  const ncaaSignals   = signals.filter(s => s.scannerType === 'MARCH_MADNESS');
 
   return (
     <div>
-      {/* March Madness section */}
+      {/* NCAA Tournament / NCAAB Markets */}
       <div style={{ marginBottom: 28 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
           <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
           <div style={{ padding: '4px 16px', borderRadius: 20, background: '#fb923c22', border: '1px solid #fb923c', fontSize: 11, fontWeight: 800, color: '#fb923c', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>
-            🏆 MARCH MADNESS — TOURNAMENT MARKETS
+            NCAA TOURNAMENT / NCAAB MARKETS
           </div>
           <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
         </div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.6 }}>
-          NCAA tournament-specific signals. Model uses 40yr seed win rates, KenPom-style adjusted efficiency margins, pace-of-play variance, and live injury status — unique depth not available on general platforms.
+          Structured statistical model: 40-year seed win rates, pre-game efficiency margins (Four Factors), pace-of-play mismatch, turnover/rebounding profiles, schedule strength, and injury-adjusted probability. Every signal shows a transparent probability breakdown.
         </p>
-        {loading ? (
+        {loading || scanning ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
             {Array(4).fill(0).map((_, i) => <SkeletonCard key={i} />)}
           </div>
-        ) : marchSignals.length === 0 ? (
+        ) : ncaaSignals.length === 0 ? (
           <div style={{ padding: '24px', background: 'var(--bg-card)', border: '1px solid #fb923c33', borderRadius: 10, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-            No March Madness markets found in current Polymarket data. Markets appear during tournament (mid-March).
+            No NCAA Tournament markets currently available on Polymarket. Tournament markets typically appear mid-March through early April. Click <strong style={{ color: 'var(--cyan)' }}>SCAN NOW</strong> to check for new markets.
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
-            {marchSignals.map(s => <SignalCard key={s.id} signal={s} cash={cash} />)}
+            {ncaaSignals.map(s => <SignalCard key={s.id} signal={s} cash={cash} />)}
           </div>
         )}
       </div>
 
-      {/* General sports section */}
+      {/* Other Sports Markets */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
           <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
           <div style={{ padding: '4px 16px', borderRadius: 20, background: '#38bdf822', border: '1px solid #38bdf8', fontSize: 11, fontWeight: 800, color: '#38bdf8', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>
-            🏀 SPORTS — NBA · NFL · MLB · NHL · SOCCER
+            OTHER SPORTS — NBA / NFL / MLB / NHL / SOCCER
           </div>
           <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
         </div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.6 }}>
-          Player injury modeling + recent form (last 5 games) → win probability vs current market price. Hook live Rotowire / ESPN injury feed for real-time data.
+          Injury-adjusted win probability model: player availability, impact scoring, and recent form (last 5 games) compared against current market price to identify mispriced contracts.
         </p>
-        {loading ? (
+        {loading || scanning ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
             {Array(4).fill(0).map((_, i) => <SkeletonCard key={i} />)}
           </div>
@@ -85,6 +84,7 @@ export default function HomePage() {
   const [category, setCategory] = useState('All');
   const [tab, setTab] = useState<'signals' | 'markets' | 'backtest' | 'sports'>('signals');
   const [portfolio, setPortfolio] = useState<{ cash: number }>({ cash: 10000 });
+  const [errors, setErrors] = useState<{ markets?: string; signals?: string; portfolio?: string }>({});
 
   const loadMarkets = useCallback(async () => {
     try {
@@ -93,29 +93,52 @@ export default function HomePage() {
       if (category !== 'All') params.set('category', category);
       params.set('limit', '24');
       const res = await fetch(`/api/markets?${params}`);
+      if (!res.ok) throw new Error(`Markets API returned ${res.status}`);
       const data = await res.json();
       setMarkets(data.markets || []);
-    } catch {}
+      setErrors(prev => ({ ...prev, markets: undefined }));
+    } catch (err) {
+      console.error('[markets] Failed to load:', err);
+      setErrors(prev => ({ ...prev, markets: String(err) }));
+    }
   }, [search, category]);
 
   const runScan = useCallback(async () => {
     setScanning(true);
+    setErrors(prev => ({ ...prev, signals: undefined }));
     try {
       const res = await fetch('/api/alpha/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ limit: 30 }),
       });
+      if (!res.ok) throw new Error(`Scan API returned ${res.status}`);
       const data = await res.json();
+      if (data.error) throw new Error(data.error);
       setSignals(data.signals || []);
-    } catch {}
+    } catch (err) {
+      console.error('[scan] Failed:', err);
+      setErrors(prev => ({ ...prev, signals: String(err) }));
+    }
     setScanning(false);
   }, []);
 
+  // On mount: load markets and portfolio only (no heavy scan)
   useEffect(() => {
     setLoading(true);
-    Promise.all([loadMarkets(), runScan()]).finally(() => setLoading(false));
-    fetch('/api/portfolio').then(r => r.json()).then(d => setPortfolio({ cash: d.cash || 10000 })).catch(() => {});
+    Promise.all([
+      loadMarkets(),
+      fetch('/api/portfolio')
+        .then(r => {
+          if (!r.ok) throw new Error(`Portfolio API returned ${r.status}`);
+          return r.json();
+        })
+        .then(d => setPortfolio({ cash: d.cash || 10000 }))
+        .catch(err => {
+          console.error('[portfolio] Failed to load:', err);
+          setErrors(prev => ({ ...prev, portfolio: String(err) }));
+        }),
+    ]).finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -133,14 +156,12 @@ export default function HomePage() {
       <div style={{ display: 'flex', flex: 1 }}>
         {/* Main content */}
         <main style={{ flex: 1, overflowY: 'auto', padding: 20, minWidth: 0 }}>
-          {/* Strategy Engine hidden from UI — keeping code intact for future use */}
-          {/* <StrategyDashboard signals={signals} /> */}
 
           {/* Tab bar */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 0, flexWrap: 'wrap' }}>
             {[
               { key: 'signals', label: `Signals (${filteredSignals.length})` },
-              { key: 'sports', label: '🏀 Sports & March Madness' },
+              { key: 'sports', label: 'Sports & NCAA' },
               { key: 'markets', label: `Markets (${markets.length})` },
               { key: 'backtest', label: 'Track Record' },
             ].map(t => (
@@ -166,6 +187,18 @@ export default function HomePage() {
             </div>
           </div>
 
+          {/* Inline error banner */}
+          {errors.signals && (
+            <div style={{ padding: '10px 14px', background: '#ef444422', border: '1px solid #ef4444', borderRadius: 8, marginBottom: 12, fontSize: 12, color: '#ef4444' }}>
+              Scan failed: {errors.signals}
+            </div>
+          )}
+          {errors.markets && tab === 'markets' && (
+            <div style={{ padding: '10px 14px', background: '#ef444422', border: '1px solid #ef4444', borderRadius: 8, marginBottom: 12, fontSize: 12, color: '#ef4444' }}>
+              Failed to load markets: {errors.markets}
+            </div>
+          )}
+
           {/* Signals tab */}
           {tab === 'signals' && (
             <>
@@ -178,11 +211,12 @@ export default function HomePage() {
               {filteredSignals.length === 0 && !scanning && !loading ? (
                 <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--text-muted)' }}>
                   <div style={{ fontSize: 32, marginBottom: 12 }}>⚡</div>
-                  <p>No signals found. Click <strong style={{ color: 'var(--cyan)' }}>SCAN NOW</strong> to run the scanners.</p>
+                  <p>No signals yet. Click <strong style={{ color: 'var(--cyan)' }}>SCAN NOW</strong> to run the scanners.</p>
                 </div>
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
-                  {loading ? Array(6).fill(0).map((_, i) => <SkeletonCard key={i} />)
+                  {scanning && signals.length === 0
+                    ? Array(6).fill(0).map((_, i) => <SkeletonCard key={i} />)
                     : filteredSignals.map(s => <SignalCard key={s.id} signal={s} cash={portfolio.cash} />)}
                 </div>
               )}
@@ -190,7 +224,7 @@ export default function HomePage() {
           )}
 
           {tab === 'sports' && (
-            <SportsTab signals={signals} loading={loading} cash={portfolio.cash} />
+            <SportsTab signals={signals} loading={false} scanning={scanning} cash={portfolio.cash} />
           )}
 
           {tab === 'markets' && (

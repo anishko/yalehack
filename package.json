@@ -5,7 +5,10 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "check": "tsc --noEmit && next lint"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

@@ -21,8 +21,14 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST to recompute correlations
-export async function POST() {
+// POST to recompute correlations — protected by admin secret
+export async function POST(req: NextRequest) {
+  const secret = req.headers.get('x-admin-secret') || req.nextUrl.searchParams.get('secret');
+  const expected = process.env.ADMIN_SECRET || 'polyedge-admin';
+  if (secret !== expected) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     await computeCorrelations();
     return NextResponse.json({ success: true });
