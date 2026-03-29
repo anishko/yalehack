@@ -43,7 +43,7 @@ export default function Header({ onScan }: { onScan?: () => void }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <Link href="/" style={{ textDecoration: 'none' }}>
               <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--cyan)', letterSpacing: '-0.5px' }}>
-                POLYEDGE
+                LINEUP
               </span>
             </Link>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--green)' }}>

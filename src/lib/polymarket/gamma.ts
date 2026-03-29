@@ -24,7 +24,7 @@ export interface GammaMarket {
 async function gammaFetch<T>(path: string): Promise<T> {
   const url = `${GAMMA_BASE}${path}`;
   const res = await fetch(url, {
-    headers: { 'User-Agent': 'PolyEdge/1.0' },
+    headers: { 'User-Agent': 'Lineup/1.0' },
     next: { revalidate: 30 },
   });
   if (!res.ok) throw new Error(`Gamma API ${res.status}: ${path}`);

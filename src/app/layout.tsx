@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'PolyEdge — Prediction Market Alpha Engine',
-  description: 'Six strategy scanners, optimized blend, real Edge Scores. The internet knows first.',
+  title: 'Lineup — Prediction Market Alpha Engine',
+  description: 'Eight strategy scanners, structured statistical modeling, real Edge Scores.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

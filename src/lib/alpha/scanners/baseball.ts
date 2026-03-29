@@ -116,6 +116,34 @@ const MLB_PATTERNS = [
   /\bpitcher\b/i,
 ];
 
+// Futures market detection — these are NOT head-to-head game markets
+const FUTURES_PATTERNS = [
+  /\bworld series\b/i,
+  /\bwin the\b.*\b(al|nl|american|national)\b/i,
+  /\bpennant\b/i,
+  /\bmvp\b/i,
+  /\bcy young\b/i,
+  /\brookie of the year\b/i,
+  /\bdivision\b/i,
+  /\bplayoff\b/i,
+  /\bpostseason\b/i,
+  /\bchampion/i,
+  /\bwin\s+(the\s+)?2026\b/i,
+  /\bwin\s+(the\s+)?(al|nl)\s+(east|west|central)/i,
+  /\bmost\s+(wins|home runs|strikeouts|rbi)/i,
+];
+
+type FuturesType = 'championship' | 'award' | 'division' | 'other';
+
+function detectFuturesType(question: string): FuturesType | null {
+  const q = question.toLowerCase();
+  if (/world series|pennant|champion|postseason|playoff/.test(q)) return 'championship';
+  if (/mvp|cy young|rookie of the year|most (wins|home runs|strikeouts|rbi)/.test(q)) return 'award';
+  if (/division|al (east|west|central)|nl (east|west|central)/.test(q)) return 'division';
+  if (FUTURES_PATTERNS.some(p => p.test(question))) return 'other';
+  return null;
+}
+
 // Team name keywords for detection
 const MLB_TEAM_KEYWORDS = MLB_TEAMS_2026.map(t => ({
   pattern: new RegExp(`\\b${t.name.split(' ').pop()!.toLowerCase()}\\b`, 'i'),
@@ -168,6 +196,153 @@ function simulatePlayers(marketId: string, teamName: string): PlayerStatus[] {
       minutesReduction: status === 'OUT' ? 100 : status === 'QUESTIONABLE' ? Math.round(20 + rng() * 40) : 0,
     };
   });
+}
+
+// ─── Futures probability model ──────────────────────────────────────────────
+// Ranks a team against the full 30-team field instead of a head-to-head matchup.
+// Produces a championship / award probability with natural team-level differentiation.
+
+function computeTeamPowerRating(team: MLBTeamProfile): number {
+  // Composite power rating from 6 weighted factors (0–100 scale)
+  const eraFactor   = Math.max(0, (5.00 - team.teamERA) / 2.0);        // 0–1, lower ERA = better
+  const whipFactor  = Math.max(0, (1.60 - team.teamWHIP) / 0.50);      // 0–1
+  const bpFactor    = Math.max(0, (5.00 - team.bullpenERA) / 2.0);     // 0–1
+  const opsFactor   = (team.obp + team.slg - 0.580) / 0.200;           // centered around league avg ~.720 OPS
+  const rpgFactor   = (team.runsPerGame - 3.5) / 2.0;                  // 0–1
+  const formFactor  = team.last10Wins / 10;                              // 0–1
+
+  return (
+    eraFactor   * 25 +
+    whipFactor  * 10 +
+    bpFactor    * 10 +
+    opsFactor   * 25 +
+    rpgFactor   * 15 +
+    formFactor  * 15
+  );
+}
+
+function computeFuturesProbability(
+  team: MLBTeamProfile,
+  marketPrice: number,
+  futuresType: FuturesType,
+): SportsExplanation {
+  const adjustments: SportsExplanation['adjustments'] = [];
+
+  // Compute power ratings for ALL teams to create relative rankings
+  const allRatings = MLB_TEAMS_2026.map(t => ({
+    abbrev: t.abbrev,
+    rating: computeTeamPowerRating(t),
+  })).sort((a, b) => b.rating - a.rating);
+
+  const teamRating = computeTeamPowerRating(team);
+  const rank = allRatings.findIndex(r => r.abbrev === team.abbrev) + 1;
+  const maxRating = allRatings[0].rating;
+  const minRating = allRatings[allRatings.length - 1].rating;
+  const ratingRange = Math.max(1, maxRating - minRating);
+  const normalizedRating = (teamRating - minRating) / ratingRange; // 0–1
+
+  // Convert ranking to a realistic championship probability distribution
+  // Top team ~18%, bottom team ~0.5%
+  let baseProbability: number;
+  if (futuresType === 'championship') {
+    // Exponential distribution — top-heavy like real WS odds
+    baseProbability = 0.005 + 0.18 * Math.pow(normalizedRating, 2.2);
+  } else if (futuresType === 'division') {
+    // Division winner — higher baseline (~20-35% for top teams, more competitive)
+    baseProbability = 0.08 + 0.28 * Math.pow(normalizedRating, 1.5);
+  } else {
+    // Award / other futures — wider range
+    baseProbability = 0.01 + 0.15 * Math.pow(normalizedRating, 2.0);
+  }
+
+  let prob = baseProbability;
+
+  // Factor 1: Pitching strength (ERA + WHIP combined)
+  const leagueAvgERA = 3.85;
+  const pitchingEdge = (leagueAvgERA - team.teamERA) * 0.025;
+  if (Math.abs(pitchingEdge) > 0.003) {
+    prob += pitchingEdge;
+    adjustments.push({
+      label: 'Pitching strength',
+      delta: pitchingEdge,
+      reason: `Team ERA ${team.teamERA.toFixed(2)} (league avg ~${leagueAvgERA.toFixed(2)}), WHIP ${team.teamWHIP.toFixed(2)}`,
+    });
+  }
+
+  // Factor 2: Offensive power
+  const ops = team.obp + team.slg;
+  const leagueAvgOPS = 0.710;
+  const offenseEdge = (ops - leagueAvgOPS) * 0.12;
+  if (Math.abs(offenseEdge) > 0.003) {
+    prob += offenseEdge;
+    adjustments.push({
+      label: 'Offensive power',
+      delta: offenseEdge,
+      reason: `OPS ${ops.toFixed(3)} (BA ${team.battingAvg.toFixed(3)} / OBP ${team.obp.toFixed(3)} / SLG ${team.slg.toFixed(3)})`,
+    });
+  }
+
+  // Factor 3: Bullpen depth (critical for postseason)
+  const bpEdge = (3.60 - team.bullpenERA) * 0.015;
+  if (Math.abs(bpEdge) > 0.003) {
+    prob += bpEdge;
+    adjustments.push({
+      label: 'Bullpen depth',
+      delta: bpEdge,
+      reason: `Bullpen ERA ${team.bullpenERA.toFixed(2)} — ${team.bullpenERA < 3.40 ? 'elite' : team.bullpenERA < 3.70 ? 'solid' : 'below average'} for October`,
+    });
+  }
+
+  // Factor 4: Run production
+  const rpgEdge = (team.runsPerGame - 4.3) * 0.012;
+  if (Math.abs(rpgEdge) > 0.003) {
+    prob += rpgEdge;
+    adjustments.push({
+      label: 'Run production',
+      delta: rpgEdge,
+      reason: `${team.runsPerGame.toFixed(1)} runs/game — ${team.runsPerGame >= 5.0 ? 'top-tier' : team.runsPerGame >= 4.5 ? 'above average' : 'average'} offense`,
+    });
+  }
+
+  // Factor 5: Recent momentum
+  const momentumEdge = (team.last10Wins - 5) * 0.006;
+  if (Math.abs(momentumEdge) > 0.003) {
+    prob += momentumEdge;
+    adjustments.push({
+      label: 'Recent momentum',
+      delta: momentumEdge,
+      reason: `Last 10 games: ${team.last10Wins}-${10 - team.last10Wins}`,
+    });
+  }
+
+  prob = Math.max(0.003, Math.min(0.40, prob));
+  const edge = prob - marketPrice;
+  const absEdge = Math.abs(edge);
+  const relativeEdge = absEdge / Math.max(0.01, marketPrice);
+
+  // Confidence based on ranking clarity and edge size
+  const confidenceParts: string[] = [];
+  if (rank <= 5) confidenceParts.push(`top-5 power ranking (#${rank})`);
+  else if (rank <= 10) confidenceParts.push(`top-10 power ranking (#${rank})`);
+  else confidenceParts.push(`power ranking #${rank}/30`);
+  if (absEdge > 0.03) confidenceParts.push(`${(absEdge * 100).toFixed(1)}pp edge vs market`);
+  if (adjustments.length >= 3) confidenceParts.push(`${adjustments.length} factors contributing`);
+
+  const riskParts: string[] = [];
+  if (futuresType === 'championship') riskParts.push('long-horizon futures — high variance');
+  if (rank > 15) riskParts.push('bottom-half team — unlikely contender');
+  if (marketPrice < 0.05) riskParts.push('low-probability market — small sample edge');
+  if (relativeEdge > 0.5) riskParts.push('large relative edge may reflect info gap');
+
+  return {
+    baseProbability: baseProbability,
+    marketImpliedProbability: marketPrice,
+    adjustments,
+    finalProbability: prob,
+    edgePoints: Math.round(edge * 1000) / 10,
+    confidenceReason: confidenceParts.join('; ') || 'standard futures model output',
+    riskReason: riskParts.join('; ') || 'no elevated risk factors',
+  };
 }
 
 // ─── Core statistical model ──────────────────────────────────────────────────
@@ -420,52 +595,114 @@ export async function scanBaseball(markets: PolymarketMarket[]): Promise<RankedS
     const team1 = findTeamByName(market.question);
     if (!team1) continue;
 
+    // Detect if this is a futures market (World Series, MVP, etc.) vs a game line
+    const futuresType = detectFuturesType(market.question);
     const team2Candidates = MLB_TEAMS_2026.filter(t => t.abbrev !== team1.abbrev && market.question.toLowerCase().includes(t.name.split(' ').pop()!.toLowerCase()));
-    const team2 = team2Candidates[0] ?? MLB_TEAMS_2026[Math.floor(rng() * MLB_TEAMS_2026.length)];
+    const isGameMarket = team2Candidates.length > 0 && !futuresType;
 
-    const pitcher1 = findPitcherForTeam(team1.abbrev, market.conditionId);
-    const pitcher2 = findPitcherForTeam(team2.abbrev, market.conditionId);
-    const players1 = simulatePlayers(market.conditionId, team1.name);
-    const isHome = rng() > 0.5;
+    if (isGameMarket) {
+      // ── Head-to-head game market ──
+      const team2 = team2Candidates[0];
+      const pitcher1 = findPitcherForTeam(team1.abbrev, market.conditionId);
+      const pitcher2 = findPitcherForTeam(team2.abbrev, market.conditionId);
+      const players1 = simulatePlayers(market.conditionId, team1.name);
+      const isHome = rng() > 0.5;
 
-    const explanation = computeBaseballProbability(team1, team2, pitcher1, pitcher2, players1, mid, isHome);
-    const edge = explanation.finalProbability - mid;
+      const explanation = computeBaseballProbability(team1, team2, pitcher1, pitcher2, players1, mid, isHome);
+      const edge = explanation.finalProbability - mid;
 
-    if (Math.abs(edge) < 0.02) continue;
+      if (Math.abs(edge) < 0.02) continue;
 
-    const direction = edge > 0 ? 'YES' : 'NO';
-    const absEdge = Math.abs(edge);
-    const relativeEdge = absEdge / Math.max(0.05, mid);
-    const confidence = Math.round(Math.min(92, 40 + relativeEdge * 12 + (pitcher1 ? 5 : 0) + Math.min(18, absEdge * 55)));
-    const riskScore = Math.max(15, Math.round(60 - relativeEdge * 6 - (pitcher1 ? 5 : 0)));
-    const expectedEdge = absEdge * 0.82;
+      const direction = edge > 0 ? 'YES' : 'NO';
+      const absEdge = Math.abs(edge);
+      const relativeEdge = absEdge / Math.max(0.05, mid);
+      const confidence = Math.round(Math.min(92, 40 + relativeEdge * 12 + (pitcher1 ? 5 : 0) + Math.min(18, absEdge * 55)));
+      const riskScore = Math.max(15, Math.round(60 - relativeEdge * 6 - (pitcher1 ? 5 : 0)));
+      const expectedEdge = absEdge * 0.82;
 
-    const sportsContext: SportsContext = {
-      sport: 'MLB',
-      competition: 'Regular Season',
-      teams: [team1.name, team2.name],
-      keyPlayers: players1,
-      efficiencyDelta: Math.round((team1.runsPerGame - team1.teamERA - (team2.runsPerGame - team2.teamERA)) * 10) / 10,
-    };
+      const sportsContext: SportsContext = {
+        sport: 'MLB',
+        competition: 'Regular Season',
+        teams: [team1.name, team2.name],
+        keyPlayers: players1,
+        efficiencyDelta: Math.round((team1.runsPerGame - team1.teamERA - (team2.runsPerGame - team2.teamERA)) * 10) / 10,
+      };
 
-    signals.push({
-      id: nanoid(),
-      scannerType: 'BASEBALL',
-      marketId: market.conditionId,
-      marketQuestion: market.question,
-      direction,
-      confidence,
-      expectedEdge,
-      riskScore,
-      edgeScore: Math.round(Math.min(3.5, relativeEdge * 0.5 + Math.log1p(absEdge * 12) * 0.5 + (pitcher1 ? 0.2 : 0)) * 100) / 100,
-      summary: `MLB model: ${(explanation.finalProbability * 100).toFixed(1)}% vs market ${(mid * 100).toFixed(1)}% — ${(absEdge * 100).toFixed(1)}pp edge`,
-      details: `${explanation.adjustments.length} factors analyzed | ${team1.name} vs ${team2.name}${pitcher1 ? ` | SP: ${pitcher1.name}` : ''}`,
-      timestamp: Date.now(),
-      marketPrice: mid,
-      category: 'Sports',
-      sportsContext,
-      sportsExplanation: explanation,
-    });
+      signals.push({
+        id: nanoid(),
+        scannerType: 'BASEBALL',
+        marketId: market.conditionId,
+        marketQuestion: market.question,
+        direction,
+        confidence,
+        expectedEdge,
+        riskScore,
+        edgeScore: Math.round(Math.min(3.5, relativeEdge * 0.5 + Math.log1p(absEdge * 12) * 0.5 + (pitcher1 ? 0.2 : 0)) * 100) / 100,
+        summary: `MLB model: ${(explanation.finalProbability * 100).toFixed(1)}% vs market ${(mid * 100).toFixed(1)}% — ${(absEdge * 100).toFixed(1)}pp edge`,
+        details: `${explanation.adjustments.length} factors analyzed | ${team1.name} vs ${team2.name}${pitcher1 ? ` | SP: ${pitcher1.name}` : ''}`,
+        timestamp: Date.now(),
+        marketPrice: mid,
+        category: 'Sports',
+        sportsContext,
+        sportsExplanation: explanation,
+      });
+    } else {
+      // ── Futures market (World Series, MVP, Cy Young, division, etc.) ──
+      const fType = futuresType || 'other';
+      const explanation = computeFuturesProbability(team1, mid, fType);
+      const edge = explanation.finalProbability - mid;
+
+      if (Math.abs(edge) < 0.01) continue;
+
+      const direction = edge > 0 ? 'YES' : 'NO';
+      const absEdge = Math.abs(edge);
+      const relativeEdge = absEdge / Math.max(0.01, mid);
+
+      // Futures confidence uses power ranking position + edge magnitude for wider spread
+      const rank = MLB_TEAMS_2026
+        .map(t => ({ abbrev: t.abbrev, rating: computeTeamPowerRating(t) }))
+        .sort((a, b) => b.rating - a.rating)
+        .findIndex(r => r.abbrev === team1.abbrev) + 1;
+
+      const rankBonus = Math.max(0, (30 - rank) / 30) * 20;       // 0–20 from ranking
+      const edgeBonus = Math.min(25, relativeEdge * 18);           // 0–25 from edge size
+      const typeBonus = fType === 'championship' ? 5 : fType === 'division' ? 8 : 3;
+      const confidence = Math.round(Math.min(90, 30 + rankBonus + edgeBonus + typeBonus));
+      const riskScore = Math.max(20, Math.round(65 - rankBonus * 0.5 - edgeBonus * 0.3));
+      const expectedEdge = absEdge * 0.75; // slightly lower conviction on long-horizon futures
+
+      const futuresLabel = fType === 'championship' ? 'World Series'
+        : fType === 'award' ? 'Award'
+        : fType === 'division' ? 'Division'
+        : 'Futures';
+
+      const sportsContext: SportsContext = {
+        sport: 'MLB',
+        competition: futuresLabel,
+        teams: [team1.name],
+        keyPlayers: simulatePlayers(market.conditionId, team1.name),
+        efficiencyDelta: Math.round((team1.runsPerGame - team1.teamERA) * 10) / 10,
+      };
+
+      signals.push({
+        id: nanoid(),
+        scannerType: 'BASEBALL',
+        marketId: market.conditionId,
+        marketQuestion: market.question,
+        direction,
+        confidence,
+        expectedEdge,
+        riskScore,
+        edgeScore: Math.round(Math.min(3.5, relativeEdge * 0.3 + Math.log1p(absEdge * 15) * 0.4 + rankBonus * 0.015) * 100) / 100,
+        summary: `${futuresLabel} model: ${(explanation.finalProbability * 100).toFixed(1)}% vs market ${(mid * 100).toFixed(1)}% — ${(absEdge * 100).toFixed(1)}pp edge (#${rank} power ranking)`,
+        details: `${explanation.adjustments.length} factors | ${team1.name} — power rank #${rank}/30 | ${explanation.confidenceReason}`,
+        timestamp: Date.now(),
+        marketPrice: mid,
+        category: 'Sports',
+        sportsContext,
+        sportsExplanation: explanation,
+      });
+    }
   }
 
   // If no live MLB markets found on Polymarket, generate signals from today's

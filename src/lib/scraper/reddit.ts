@@ -12,7 +12,7 @@ export async function fetchSubreddit(subreddit: string, limit = 25): Promise<Red
   const url = `https://www.reddit.com/r/${subreddit}/hot.json?limit=${limit}`;
   try {
     const res = await fetch(url, {
-      headers: { 'User-Agent': 'PolyEdge:1.0 (research tool)' },
+      headers: { 'User-Agent': 'Lineup:1.0 (research tool)' },
       next: { revalidate: 300 },
     });
     if (!res.ok) return [];

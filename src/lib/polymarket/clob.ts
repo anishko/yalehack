@@ -2,7 +2,7 @@ const CLOB_BASE = 'https://clob.polymarket.com';
 
 async function clobFetch<T>(path: string): Promise<T> {
   const res = await fetch(`${CLOB_BASE}${path}`, {
-    headers: { 'User-Agent': 'PolyEdge/1.0' },
+    headers: { 'User-Agent': 'Lineup/1.0' },
     next: { revalidate: 15 },
   });
   if (!res.ok) throw new Error(`CLOB ${res.status}: ${path}`);
@@ -77,7 +77,7 @@ export async function batchPrices(
   try {
     const res = await fetch(`${CLOB_BASE}/prices`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': 'PolyEdge/1.0' },
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'Lineup/1.0' },
       body: JSON.stringify(items),
       next: { revalidate: 15 },
     });

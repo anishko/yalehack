@@ -26,5 +26,5 @@ export default clientPromise;
 
 export async function getDb(): Promise<Db> {
   const client = await clientPromise;
-  return client.db('polyedge');
+  return client.db('lineup');
 }
