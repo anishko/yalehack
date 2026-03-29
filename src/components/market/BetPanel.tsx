@@ -15,21 +15,28 @@ export default function BetPanel({ market, cash = 10000 }: { market: PolymarketM
     : 1 - (market.midPrice ?? 0.5);
 
   const potential = amount / price - amount;
+  // Derive Kelly signal from actual market data
+  const mid = market.midPrice ?? 0.5;
+  const impliedProb = direction === 'YES' ? mid : 1 - mid;
+  // Edge: deviation from 50% — larger spread from midpoint = more edge
+  const rawEdge = Math.abs(mid - 0.5);
+  const derivedConfidence = Math.round(Math.min(85, 45 + rawEdge * 120));
+  const derivedEdgeScore = Math.round(Math.min(3.0, rawEdge * 8 + 0.3) * 100) / 100;
   const kellySignal = {
     id: '',
     scannerType: 'SPREAD' as ScannerType,
     marketId: market.conditionId,
     marketQuestion: market.question,
     direction,
-    confidence: 55,
-    expectedEdge: 0.03,
+    confidence: derivedConfidence,
+    expectedEdge: Math.round(rawEdge * 0.6 * 10000) / 10000, // conservative fraction of raw edge
     riskScore: market.riskScore ?? 50,
-    edgeScore: 1.5,
+    edgeScore: derivedEdgeScore,
     summary: '',
     details: '',
     timestamp: Date.now(),
   };
-  const kellySize = Math.round(computeOptimalBetSize(kellySignal, cash, DEFAULT_WEIGHTS['SPREAD'], 55));
+  const kellySize = Math.round(computeOptimalBetSize(kellySignal, cash, DEFAULT_WEIGHTS['SPREAD'], derivedConfidence));
 
   const handleBet = async () => {
     setPlacing(true);

@@ -24,14 +24,14 @@ function isRelevant(market: GammaMarket, st: ScannerType): boolean {
 }
 
 // Per-trade Sharpe: mean(trade returns) / std(trade returns) * sqrt(trades_per_year)
-function perTradeSharpe(tradeReturns: number[], tradesPerMonth: number): number {
+// Un-annualized per-trade Sharpe: mean/std (signal quality)
+function perTradeSharpe(tradeReturns: number[]): number {
   if (tradeReturns.length < 2) return 0;
   const mean = tradeReturns.reduce((s, r) => s + r, 0) / tradeReturns.length;
   const variance = tradeReturns.reduce((s, r) => s + (r - mean) ** 2, 0) / (tradeReturns.length - 1);
   const std = Math.sqrt(variance);
-  if (std === 0) return 0;
-  const tradesPerYear = tradesPerMonth * 12;
-  return Math.round((mean / std) * Math.sqrt(tradesPerYear) * 100) / 100;
+  if (std === 0) return mean > 0 ? 2.0 : 0;
+  return Math.round((mean / std) * 100) / 100;
 }
 
 // ─── Simplified entry logic per scanner (same as backtest.ts) ─────────────────
@@ -96,12 +96,21 @@ async function fetchAllStrategyTrades(lookbackDays: number): Promise<Record<Scan
   const result: Record<string, BacktestTrade[]> = {};
   for (const t of allTypes) result[t] = [];
 
-  const resolvedMarkets = await fetchResolvedMarkets(150, 0);
+  const fetchCount = Math.min(500, Math.max(150, lookbackDays * 3));
+  const resolvedMarkets = await fetchResolvedMarkets(fetchCount, 0);
   if (!resolvedMarkets.length) return result as Record<ScannerType, BacktestTrade[]>;
 
+  // Filter markets to those closed within the lookback window
+  const cutoffMs = Date.now() - lookbackDays * 86400000;
+  const filteredMarkets = resolvedMarkets.filter(m => {
+    if (!m.endDate) return true;
+    return new Date(m.endDate).getTime() >= cutoffMs;
+  });
+  if (!filteredMarkets.length) return result as Record<ScannerType, BacktestTrade[]>;
+
   const batchSize = 10;
-  for (let i = 0; i < resolvedMarkets.length; i += batchSize) {
-    const batch = resolvedMarkets.slice(i, i + batchSize);
+  for (let i = 0; i < filteredMarkets.length; i += batchSize) {
+    const batch = filteredMarkets.slice(i, i + batchSize);
     const batchResults = await Promise.allSettled(
       batch.map(async (market) => {
         // Determine outcome from outcomePrices
@@ -117,19 +126,30 @@ async function fetchAllStrategyTrades(lookbackDays: number): Promise<Record<Scan
           outcomeYesWon = yp > 0.5;
         } catch { return; }
 
-        // Fetch individual market to get token IDs for price history
-        const { fetchMarketById } = await import('@/lib/polymarket/gamma');
-        const fullMarket = await fetchMarketById(market.conditionId);
-        const yesToken = fullMarket?.tokens?.find(t => t.outcome === 'Yes' || t.outcome === 'YES');
-        if (!yesToken?.token_id) return;
+        // Extract YES token ID from clobTokenIds (JSON string: ["YES_ID", "NO_ID"])
+        let yesTokenId: string | undefined;
+        if (market.clobTokenIds) {
+          try {
+            const ids = typeof market.clobTokenIds === 'string'
+              ? JSON.parse(market.clobTokenIds) as string[]
+              : market.clobTokenIds as unknown as string[];
+            yesTokenId = ids[0]; // First element is YES token
+          } catch {}
+        }
+        // Fallback: try tokens array if available
+        if (!yesTokenId) {
+          const yesToken = market.tokens?.find(t => (t.outcome === 'Yes' || t.outcome === 'YES') && t.token_id);
+          yesTokenId = yesToken?.token_id;
+        }
+        if (!yesTokenId) return;
 
-        const priceHistory = await getPricesHistory(yesToken.token_id, '1d', 60);
-        if (priceHistory.length < 5) return;
+        const priceHistory = await getPricesHistory(yesTokenId, '1d', 60);
+        if (priceHistory.length < 3) return;
 
         const prices = priceHistory.map(h => h.p);
-        const splitIdx = Math.floor(prices.length * 0.7);
+        const splitIdx = Math.max(2, Math.floor(prices.length * 0.7));
         const entryPrices = prices.slice(0, splitIdx);
-        if (entryPrices.length < 5) return;
+        if (entryPrices.length < 2) return;
 
         const yesPrice = entryPrices[entryPrices.length - 1];
         const noPrice = 1 - yesPrice;
@@ -162,6 +182,7 @@ async function fetchAllStrategyTrades(lookbackDays: number): Promise<Record<Scan
             returnPct: Math.round(returnPct * 100) / 100,
             pnl: Math.round(pnl * 100) / 100,
             strategy: st,
+            confidence: signal.confidence,
             category: category as never,
           });
         }
@@ -173,12 +194,18 @@ async function fetchAllStrategyTrades(lookbackDays: number): Promise<Record<Scan
 }
 
 function buildStrategyPerformance(type: ScannerType, trades: BacktestTrade[]): StrategyPerformance {
-  const tradeReturns = trades.map(t => t.returnPct / 100);
+  const PORTFOLIO = 10000;
+  // Scale per-trade returns to portfolio-level returns
+  const tradeReturns = trades.map(t => (t.pnl / PORTFOLIO));
   const wins = trades.filter(t => t.pnl > 0);
-  const equity = computeEquityCurve(tradeReturns, 10000);
+  const equity = computeEquityCurve(tradeReturns, PORTFOLIO);
   const maxDD = computeMaxDrawdown(equity.map(e => e.equity));
   const totalReturn = (equity[equity.length - 1]?.equity - 10000) / 10000;
-  const tradesPerMonth = trades.length / 3; // ~90 days lookback
+  // Calculate trades per month from actual timestamp span (avoid inflated annualization)
+  const timestamps = trades.map(t => t.timestamp);
+  const spanMs = timestamps.length >= 2 ? Math.max(...timestamps) - Math.min(...timestamps) : 30 * 86400000;
+  const spanMonths = Math.max(1, spanMs / (30 * 86400000));
+  const tradesPerMonth = trades.length / spanMonths;
 
   const names: Record<ScannerType, string> = {
     ARB: 'Arbitrage', SPREAD: 'Spread', VELOCITY: 'Momentum',
@@ -190,7 +217,7 @@ function buildStrategyPerformance(type: ScannerType, trades: BacktestTrade[]): S
     name: names[type],
     type,
     returns: tradeReturns,
-    edgeScore: perTradeSharpe(tradeReturns, Math.max(1, tradesPerMonth)),
+    edgeScore: perTradeSharpe(tradeReturns),
     winRate: trades.length ? Math.round((wins.length / trades.length) * 100) / 100 : 0,
     avgReturn: tradeReturns.length ? tradeReturns.reduce((a, b) => a + b, 0) / tradeReturns.length : 0,
     maxDrawdown: maxDD,
@@ -230,7 +257,7 @@ export async function optimizeStrategyBlend(lookbackDays = 90): Promise<Optimize
   const totalReturn = (equity[equity.length - 1]?.equity - 10000) / 10000;
 
   const wins = blendedTrades.filter(r => r > 0);
-  const blendedSharpe = perTradeSharpe(blendedTrades, strategies.reduce((s, st, i) => s + st.tradeFrequency * bestWeights[i], 0));
+  const blendedSharpe = perTradeSharpe(blendedTrades);
 
   const weightMap = {} as Record<ScannerType, number>;
   types.forEach((t, i) => { weightMap[t] = bestWeights[i]; });

@@ -136,6 +136,7 @@ export interface BacktestTrade {
   returnPct: number;
   pnl: number;
   strategy: ScannerType;
+  confidence?: number; // signal confidence at entry (0-100)
 }
 
 export interface MonteCarloResult {

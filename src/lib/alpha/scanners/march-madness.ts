@@ -156,20 +156,25 @@ export async function scanMarchMadness(markets: PolymarketMarket[]): Promise<Ran
     const players1 = simulatePlayers(market.conditionId, team1?.name ?? `Seed ${seed1} Team`);
     const injDelta  = injuryProbDelta(players1);
 
-    // Historical seed win rate as prior, blended with efficiency model
+    // Use market price as anchor; model adjusts based on efficiency differential + injuries
+    // Seed prior and adjEM are for single-game matchups, so we scale the adjustment
     const seedPrior = SEED_WIN_RATES[Math.min(seed1, 8)] ?? 0.5;
     const modelProb = adjEMToWinProb(adjEM1, adjEM2, tempo1, tempo2);
-    const blended   = 0.40 * seedPrior + 0.60 * modelProb + injDelta;
-    const finalProb = Math.max(0.05, Math.min(0.95, blended));
+    // Model-vs-market edge: how much our model disagrees with the market
+    const modelDelta = (modelProb - 0.5) * 0.15 + (seedPrior - 0.5) * 0.08; // scaled adjustments
+    const finalProb = Math.max(0.02, Math.min(0.95, mid + modelDelta + injDelta));
 
     const edge      = finalProb - mid;
-    if (Math.abs(edge) < 0.04) continue;
+    if (Math.abs(edge) < 0.02) continue;
 
     const direction    = edge > 0 ? 'YES' : 'NO';
     const absEdge      = Math.abs(edge);
-    const confidence   = Math.min(95, Math.round(52 + absEdge * 180));
+    // Scale confidence by seed reliability + relative edge (not just raw edge)
+    const relativeEdge = absEdge / Math.max(0.05, mid);
+    const seedBonus    = seed1 <= 2 ? 8 : seed1 <= 4 ? 4 : 0; // higher seeds = more confident
+    const confidence   = Math.round(Math.min(93, 45 + relativeEdge * 10 + seedBonus + Math.min(20, absEdge * 50)));
     const expectedEdge = absEdge * 0.82;
-    const riskScore    = Math.max(15, Math.round(65 - absEdge * 150 - (seed1 <= 3 ? 10 : 0)));
+    const riskScore    = Math.max(15, Math.round(65 - relativeEdge * 6 - (seed1 <= 3 ? 10 : 0)));
 
     // Build a meaningful signal summary
     const injuredPlayers = players1.filter(p => p.status !== 'HEALTHY');
@@ -200,7 +205,7 @@ export async function scanMarchMadness(markets: PolymarketMarket[]): Promise<Ran
       confidence,
       expectedEdge,
       riskScore,
-      edgeScore: Math.min(3.0, absEdge * 18),
+      edgeScore: Math.round(Math.min(3.5, relativeEdge * 0.5 + Math.log1p(absEdge * 12) * 0.5 + (seed1 <= 2 ? 0.3 : 0)) * 100) / 100,
       summary: `[${round}] Seed ${seed1} vs ${seed2}: model ${(finalProb * 100).toFixed(1)}% vs market ${(mid * 100).toFixed(1)}% — ${(absEdge * 100).toFixed(1)}pp edge${upsetAlert}`,
       details: `AdjEM: +${adjEM1.toFixed(1)} vs +${adjEM2.toFixed(1)} | Tempo: ${tempo1.toFixed(0)} vs ${tempo2.toFixed(0)} | Seed prior: ${(seedPrior * 100).toFixed(0)}%${injuryNote}. Connect ESPN API for live injury updates.`,
       timestamp: Date.now(),

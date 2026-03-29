@@ -78,7 +78,7 @@ export async function scanSocial(markets: PolymarketMarket[]): Promise<RankedSig
       confidence,
       expectedEdge: Math.round(expectedEdge * 10000) / 10000,
       riskScore: Math.max(10, 65 - signal.articleCount * 3 - finbertBoost),
-      edgeScore: Math.min(2.0, (confidence / 100) * 2 * finbertEdgeMultiplier),
+      edgeScore: Math.round(Math.min(3.0, (confidence / 100) * 1.5 * finbertEdgeMultiplier + (hasGap ? 0.4 : 0)) * 100) / 100,
       summary: `${signal.articleCount} articles, Reddit score ${signal.redditScore} — FinBERT: ${signal.finbertLabel} (${(signal.finbertScore * 100).toFixed(0)}%)${hasGap ? ' vs market price' : ''}`,
       details: `Topic: "${topic}" | FinBERT sentiment: ${signal.finbertLabel} (score: ${signal.finbertScore.toFixed(3)}) | Headlines: ${signal.headlines.slice(0, 2).join('; ')} | Sources: ${signal.sources.join(', ')}`,
       timestamp: Date.now(),

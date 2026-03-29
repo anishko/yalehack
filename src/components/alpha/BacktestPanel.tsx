@@ -75,7 +75,8 @@ export default function BacktestPanel() {
     return () => { if (demoRef.current) clearInterval(demoRef.current); };
   }, [demoActive, result]);
 
-  useEffect(() => { runBacktest(); }, []);
+  // Re-run backtest when strategy or lookback days change
+  useEffect(() => { runBacktest(); }, [strategy, days]);
 
   const esColor = result ? edgeScoreColor(result.edgeScore) : 'var(--text-muted)';
 

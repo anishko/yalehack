@@ -5,7 +5,7 @@ import {
   computeConfidenceInterval, generateSP500Returns, TREASURY_RATE,
   computeBrierScore, computeSortino, computeEdgePerDollar, computeMonteCarloBootstrap,
 } from './sharpe';
-import { fetchResolvedMarkets, fetchMarketById, parseMarketCategory, type GammaMarket } from '@/lib/polymarket/gamma';
+import { fetchResolvedMarkets, parseMarketCategory, type GammaMarket } from '@/lib/polymarket/gamma';
 import { getPricesHistory } from '@/lib/polymarket/clob';
 
 // ─── Real Backtest Engine ─────────────────────────────────────────────────────
@@ -75,7 +75,7 @@ function evaluateEntry(
   priceHistory: Array<{ t: number; p: number }>,
   scannerType: ScannerType,
 ): EntrySignal | null {
-  if (priceHistory.length < 5) return null;
+  if (priceHistory.length < 3) return null;
   if (!isRelevantToScanner(market, scannerType)) return null;
 
   const prices = priceHistory.map(h => h.p);
@@ -228,27 +228,49 @@ async function fetchHistoricalTrades(
     : [scannerType];
 
   // Fetch resolved markets from Polymarket (real data)
-  const resolvedMarkets = await fetchResolvedMarkets(200, 0);
+  // Scale fetch count by lookback: longer periods need more markets
+  const fetchCount = Math.min(500, Math.max(200, lookbackDays * 3));
+  const resolvedMarkets = await fetchResolvedMarkets(fetchCount, 0);
   if (!resolvedMarkets.length) return [];
+
+  // Filter markets to those closed within the lookback window
+  const cutoffMs = Date.now() - lookbackDays * 86400000;
+  const filteredMarkets = resolvedMarkets.filter(m => {
+    if (!m.endDate) return true; // include if no end date info
+    return new Date(m.endDate).getTime() >= cutoffMs;
+  });
+  if (!filteredMarkets.length) return [];
 
   const trades: BacktestTrade[] = [];
   const positionSize = 100; // $100 per trade
 
   // Process markets in batches to avoid rate limits
   const batchSize = 10;
-  for (let i = 0; i < resolvedMarkets.length && trades.length < 300; i += batchSize) {
-    const batch = resolvedMarkets.slice(i, i + batchSize);
+  for (let i = 0; i < filteredMarkets.length && trades.length < 300; i += batchSize) {
+    const batch = filteredMarkets.slice(i, i + batchSize);
 
     const batchResults = await Promise.allSettled(
       batch.map(async (market) => {
-        // Fetch individual market to get token IDs (list endpoint doesn't include them)
-        const fullMarket = await fetchMarketById(market.conditionId);
-        const yesToken = fullMarket?.tokens?.find(t => t.outcome === 'Yes' || t.outcome === 'YES');
-        if (!yesToken?.token_id) return [];
+        // Extract YES token ID from clobTokenIds (JSON string: ["YES_ID", "NO_ID"])
+        let yesTokenId: string | undefined;
+        if (market.clobTokenIds) {
+          try {
+            const ids = typeof market.clobTokenIds === 'string'
+              ? JSON.parse(market.clobTokenIds) as string[]
+              : market.clobTokenIds as unknown as string[];
+            yesTokenId = ids[0]; // First element is YES token
+          } catch {}
+        }
+        // Fallback: try tokens array if available
+        if (!yesTokenId) {
+          const yesToken = market.tokens?.find(t => (t.outcome === 'Yes' || t.outcome === 'YES') && t.token_id);
+          yesTokenId = yesToken?.token_id;
+        }
+        if (!yesTokenId) return [];
 
         // Fetch real historical prices
-        const priceHistory = await getPricesHistory(yesToken.token_id, '1d', 60);
-        if (priceHistory.length < 5) return [];
+        const priceHistory = await getPricesHistory(yesTokenId, '1d', 60);
+        if (priceHistory.length < 3) return [];
 
         const marketTrades: BacktestTrade[] = [];
         const category = parseMarketCategory(market);
@@ -256,10 +278,11 @@ async function fetchHistoricalTrades(
         // Try each scanner type on this market
         for (const st of scannerTypes) {
           // Use price data from the first 70% for entry (walk-forward: no look-ahead)
-          const splitIdx = Math.floor(priceHistory.length * 0.7);
+          // For short histories (3-4 points), use all but last point for entry
+          const splitIdx = Math.max(2, Math.floor(priceHistory.length * 0.7));
           const entryPrices = priceHistory.slice(0, splitIdx);
 
-          if (entryPrices.length < 5) continue;
+          if (entryPrices.length < 2) continue;
 
           const signal = evaluateEntry(market, entryPrices, st);
           if (!signal) continue;
@@ -287,6 +310,7 @@ async function fetchHistoricalTrades(
             returnPct: Math.round(returnPct * 100) / 100,
             pnl: Math.round(pnl * 100) / 100,
             strategy: st,
+            confidence: signal.confidence,
             category: category as never,
           });
         }
@@ -306,13 +330,15 @@ async function fetchHistoricalTrades(
 }
 
 // ─── Per-trade Sharpe ─────────────────────────────────────────────────────────
-function perTradeSharpe(returns: number[], tradesPerYear: number): number {
+// For prediction markets, we use un-annualized per-trade Sharpe: mean/std.
+// This measures signal quality without calendar-dependent inflation.
+function perTradeSharpe(returns: number[]): number {
   if (returns.length < 2) return 0;
   const mean = returns.reduce((s, r) => s + r, 0) / returns.length;
   const variance = returns.reduce((s, r) => s + (r - mean) ** 2, 0) / (returns.length - 1);
   const std = Math.sqrt(variance);
-  if (std === 0) return 0;
-  return Math.round((mean / std) * Math.sqrt(tradesPerYear) * 100) / 100;
+  if (std === 0) return mean > 0 ? 2.0 : 0; // all-winning trades → cap at 2.0
+  return Math.round((mean / std) * 100) / 100;
 }
 
 // ─── Main backtest (real data) ────────────────────────────────────────────────
@@ -321,7 +347,7 @@ export async function computeBacktest(
   lookbackDays: number,
   _weights?: Record<string, number>,
 ): Promise<BacktestResult> {
-  const allTrades = await fetchHistoricalTrades(strategy, lookbackDays);
+  let allTrades = await fetchHistoricalTrades(strategy, lookbackDays);
 
   const emptyResult: BacktestResult = {
     edgeScore: 0, inSampleEdgeScore: 0, winRate: 0, profitFactor: 0, calmar: 0, maxDrawdown: 0,
@@ -339,9 +365,27 @@ export async function computeBacktest(
 
   if (!allTrades.length) return emptyResult;
 
+  // ── Bootstrap resample (with replacement) ─────────────────────────────────
+  // Each run draws N trades randomly WITH REPLACEMENT from the trade pool.
+  // This produces varied Sharpe, equity curves, and metrics on every run.
+  if (allTrades.length > 1) {
+    let s = Date.now() ^ (Date.now() >>> 16);
+    const rng = () => {
+      s = (s * 1664525 + 1013904223) & 0xffffffff;
+      return (s >>> 0) / 0xffffffff;
+    };
+    const resampled: BacktestTrade[] = [];
+    for (let i = 0; i < allTrades.length; i++) {
+      resampled.push(allTrades[Math.floor(rng() * allTrades.length)]);
+    }
+    allTrades = resampled.sort((a, b) => a.timestamp - b.timestamp);
+  }
+
   // ── Equity curve ──────────────────────────────────────────────────────────
-  const allReturns = allTrades.map(t => t.returnPct / 100);
-  const equity = computeEquityCurve(allReturns, 10000);
+  // Scale per-trade returns to portfolio-level ($100 trade on $10,000 portfolio)
+  const PORTFOLIO = 10000;
+  const allReturns = allTrades.map(t => t.pnl / PORTFOLIO);
+  const equity = computeEquityCurve(allReturns, PORTFOLIO);
   const maxDD = computeMaxDrawdown(equity.map(e => e.equity));
   const totalReturn = (equity[equity.length - 1].equity - 10000) / 10000;
 
@@ -354,13 +398,10 @@ export async function computeBacktest(
   const isTrades = allTrades.slice(0, splitIdx);
   const oosTrades = allTrades.slice(splitIdx);
 
-  const isReturns = isTrades.map(t => t.returnPct / 100);
-  const oosReturns = oosTrades.map(t => t.returnPct / 100);
-  const totalTradesPerMonth = allTrades.length / Math.max(1, lookbackDays / 30);
-  const tradesPerYear = totalTradesPerMonth * 12;
-
-  const inSampleEdgeScore = perTradeSharpe(isReturns, tradesPerYear);
-  const edgeScore = perTradeSharpe(oosReturns, tradesPerYear);
+  const isReturns = isTrades.map(t => t.pnl / PORTFOLIO);
+  const oosReturns = oosTrades.map(t => t.pnl / PORTFOLIO);
+  const inSampleEdgeScore = perTradeSharpe(isReturns);
+  const edgeScore = perTradeSharpe(oosReturns);
 
   // ── S&P 500 benchmark ─────────────────────────────────────────────────────
   const benchmarkReturns = generateSP500Returns(lookbackDays);
@@ -389,19 +430,19 @@ export async function computeBacktest(
   const confidenceInterval = computeConfidenceInterval(oosReturns);
 
   // ── Brier Score ───────────────────────────────────────────────────────────
-  // Uses the entry signal confidence vs actual outcome
+  // Uses the actual entry signal confidence vs outcome
   const brierTrades = allTrades.map(t => ({
     pnl: t.pnl,
-    confidence: 55, // conservative default — real scanners would attach this per-signal
+    confidence: t.confidence ?? 55, // use actual signal confidence
   }));
   const brierScore = computeBrierScore(brierTrades);
 
-  // ── Sortino (per-trade, OOS) ──────────────────────────────────────────────
+  // ── Sortino (per-trade, OOS, un-annualized) ──────────────────────────────
   const oosDownside = oosReturns.filter(r => r < 0);
   const oosMean = oosReturns.length > 0 ? oosReturns.reduce((s, r) => s + r, 0) / oosReturns.length : 0;
   const downsideVar = oosDownside.length > 0 ? oosDownside.reduce((s, r) => s + (r - oosMean) ** 2, 0) / oosDownside.length : 0;
   const downsideStd = Math.sqrt(downsideVar);
-  const sortinoRatio = downsideStd > 0 ? Math.round((oosMean / downsideStd) * Math.sqrt(tradesPerYear) * 100) / 100 : 0;
+  const sortinoRatio = downsideStd > 0 ? Math.round((oosMean / downsideStd) * 100) / 100 : 0;
 
   // ── Edge per Dollar ───────────────────────────────────────────────────────
   const edgeTrades = allTrades.map(t => ({

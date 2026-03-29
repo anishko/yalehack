@@ -114,17 +114,23 @@ export async function scanSports(markets: PolymarketMarket[]): Promise<RankedSig
     const formDelta     = (form1 - form2) * 0.10; // max ±10pp from form
 
     // Model probability for team 1 (YES)
-    const modelProb = Math.max(0.05, Math.min(0.95, 0.50 + injDelta + formDelta));
+    // Use market price as prior (not 50%) — multi-outcome markets like "who wins
+    // the Stanley Cup" have 30+ teams at ~3% each, 50% baseline would be absurd.
+    // Adjust the market prior by injury/form factors.
+    const modelProb = Math.max(0.02, Math.min(0.95, mid + injDelta + formDelta));
     const marketProb = mid;
     const edge       = modelProb - marketProb; // positive = YES is undervalued
 
-    if (Math.abs(edge) < 0.04) continue; // need at least 4pp edge
+    if (Math.abs(edge) < 0.02) continue; // need at least 2pp edge
 
     const direction    = edge > 0 ? 'YES' : 'NO';
     const absEdge      = Math.abs(edge);
-    const confidence   = Math.min(95, Math.round(50 + absEdge * 200));
+    // Scale confidence by relative edge (edge/marketProb) for multi-outcome markets
+    // where raw absEdge can be huge but doesn't mean high confidence
+    const relativeEdge = absEdge / Math.max(0.05, marketProb);
+    const confidence   = Math.round(Math.min(92, 42 + relativeEdge * 12 + Math.min(15, absEdge * 60)));
     const expectedEdge = absEdge * 0.85; // conservative (take 85% of theoretical edge)
-    const riskScore    = Math.round(60 - absEdge * 100);
+    const riskScore    = Math.max(15, Math.round(65 - relativeEdge * 8 - (injDelta !== 0 ? 5 : 0)));
 
     const injuredStars = keyPlayers.filter(p => p.status !== 'HEALTHY');
     const injuryNote   = injuredStars.length
@@ -146,7 +152,7 @@ export async function scanSports(markets: PolymarketMarket[]): Promise<RankedSig
       confidence,
       expectedEdge,
       riskScore,
-      edgeScore: Math.min(2.5, absEdge * 15),
+      edgeScore: Math.round(Math.min(3.5, relativeEdge * 0.6 + Math.log1p(absEdge * 10) * 0.4) * 100) / 100,
       summary: `${sport} model: ${(modelProb * 100).toFixed(1)}% vs market ${(marketProb * 100).toFixed(1)}% — ${Math.abs(edge * 100).toFixed(1)}pp edge`,
       details: `${injuryNote}. Recent form: ${(form1 * 100).toFixed(0)}% vs ${(form2 * 100).toFixed(0)}% (last 5 games). Hook live Rotowire data for real injury status.`,
       timestamp: Date.now(),

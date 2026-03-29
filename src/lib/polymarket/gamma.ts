@@ -17,6 +17,7 @@ export interface GammaMarket {
   tokens: Array<{ token_id: string; outcome: string; winner?: boolean }>;
   outcomes?: string;        // JSON-encoded string from gamma
   outcomePrices?: string;   // JSON-encoded string
+  clobTokenIds?: string;    // JSON-encoded string: ["YES_TOKEN_ID", "NO_TOKEN_ID"]
   tags?: Array<{ id: string; label?: string; slug?: string }>;
 }
 
@@ -46,17 +47,25 @@ export async function searchMarkets(query: string, limit = 20): Promise<GammaMar
   }
 }
 
-export async function fetchMarketById(conditionId: string): Promise<GammaMarket | null> {
+export async function fetchMarketById(id: string): Promise<GammaMarket | null> {
   try {
-    return await gammaFetch<GammaMarket>(`/markets/${conditionId}`);
+    return await gammaFetch<GammaMarket>(`/markets/${id}`);
   } catch {
-    return null;
+    // If numeric ID fails, try by slug
+    try {
+      const results = await gammaFetch<GammaMarket[]>(`/markets?id=${id}&limit=1`);
+      return results?.[0] ?? null;
+    } catch {
+      return null;
+    }
   }
 }
 
 export async function fetchResolvedMarkets(limit = 100, offset = 0): Promise<GammaMarket[]> {
   try {
-    return await gammaFetch<GammaMarket[]>(`/markets?closed=true&limit=${limit}&offset=${offset}`);
+    // Sort by newest first, ascending=false gives most recent closed markets
+    // which are more likely to have CLOB price history
+    return await gammaFetch<GammaMarket[]>(`/markets?closed=true&order=id&ascending=false&limit=${limit}&offset=${offset}`);
   } catch {
     return [];
   }
