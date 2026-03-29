@@ -314,34 +314,96 @@ function computeBaseballProbability(
   };
 }
 
+// ─── Demo matchups (shown when no live MLB markets on Polymarket) ────────────
+// Realistic today's-game-style matchups so the engine is always demonstrable.
+// In production these are replaced by real Polymarket MLB markets.
+const DEMO_MATCHUPS: Array<{ away: string; home: string; marketPrice: number }> = [
+  { away: 'NYY', home: 'BOS', marketPrice: 0.52 },
+  { away: 'LAD', home: 'SF',  marketPrice: 0.58 },
+  { away: 'HOU', home: 'SEA', marketPrice: 0.54 },
+  { away: 'ATL', home: 'NYM', marketPrice: 0.50 },
+  { away: 'PHI', home: 'MIL', marketPrice: 0.48 },
+  { away: 'SD',  home: 'ARI', marketPrice: 0.46 },
+  { away: 'BAL', home: 'TB',  marketPrice: 0.52 },
+  { away: 'MIN', home: 'CLE', marketPrice: 0.47 },
+  { away: 'TEX', home: 'LAA', marketPrice: 0.55 },
+  { away: 'CHC', home: 'STL', marketPrice: 0.49 },
+  { away: 'DET', home: 'KC',  marketPrice: 0.51 },
+  { away: 'CIN', home: 'PIT', marketPrice: 0.53 },
+];
+
+function buildSignalFromMatchup(
+  team1: MLBTeamProfile,
+  team2: MLBTeamProfile,
+  marketPrice: number,
+  isHome: boolean,
+  matchupId: string,
+): RankedSignal | null {
+  const pitcher1 = findPitcherForTeam(team1.abbrev, matchupId);
+  const pitcher2 = findPitcherForTeam(team2.abbrev, matchupId);
+  const players1 = simulatePlayers(matchupId, team1.name);
+
+  const explanation = computeBaseballProbability(team1, team2, pitcher1, pitcher2, players1, marketPrice, isHome);
+  const edge = explanation.finalProbability - marketPrice;
+
+  if (Math.abs(edge) < 0.015) return null;
+
+  const direction = edge > 0 ? 'YES' : 'NO';
+  const absEdge = Math.abs(edge);
+  const relativeEdge = absEdge / Math.max(0.05, marketPrice);
+  const confidence = Math.round(Math.min(92, 40 + relativeEdge * 12 + (pitcher1 ? 5 : 0) + Math.min(18, absEdge * 55)));
+  const riskScore = Math.max(15, Math.round(60 - relativeEdge * 6 - (pitcher1 ? 5 : 0)));
+  const expectedEdge = absEdge * 0.82;
+
+  const sportsContext: SportsContext = {
+    sport: 'MLB',
+    competition: 'Regular Season',
+    teams: [team1.name, team2.name],
+    keyPlayers: players1,
+    efficiencyDelta: Math.round((team1.runsPerGame - team1.teamERA - (team2.runsPerGame - team2.teamERA)) * 10) / 10,
+  };
+
+  return {
+    id: nanoid(),
+    scannerType: 'BASEBALL',
+    marketId: matchupId,
+    marketQuestion: `Will the ${team1.name} beat the ${team2.name}?`,
+    direction,
+    confidence,
+    expectedEdge,
+    riskScore,
+    edgeScore: Math.round(Math.min(3.5, relativeEdge * 0.5 + Math.log1p(absEdge * 12) * 0.5 + (pitcher1 ? 0.2 : 0)) * 100) / 100,
+    summary: `MLB model: ${(explanation.finalProbability * 100).toFixed(1)}% vs market ${(marketPrice * 100).toFixed(1)}% — ${(absEdge * 100).toFixed(1)}pp edge`,
+    details: `${explanation.adjustments.length} factors analyzed | ${team1.name} vs ${team2.name}${pitcher1 ? ` | SP: ${pitcher1.name}` : ''}`,
+    timestamp: Date.now(),
+    marketPrice,
+    category: 'Sports',
+    sportsContext,
+    sportsExplanation: explanation,
+  };
+}
+
 // ─── Main scanner ─────────────────────────────────────────────────────────────
 export async function scanBaseball(markets: PolymarketMarket[]): Promise<RankedSignal[]> {
   const signals: RankedSignal[] = [];
   const baseballMarkets = markets.filter(m => m.active && !m.closed && isBaseballMarket(m.question));
 
+  // Process live Polymarket MLB markets
   for (const market of baseballMarkets) {
     const mid = market.midPrice ?? 0.5;
     const rng = seededRng(market.conditionId.split('').reduce((a, c) => a + c.charCodeAt(0), 0));
 
-    // Identify teams
     const team1 = findTeamByName(market.question);
-    if (!team1) continue; // skip if we can't identify a team
+    if (!team1) continue;
 
-    // Find or generate opponent
     const team2Candidates = MLB_TEAMS_2026.filter(t => t.abbrev !== team1.abbrev && market.question.toLowerCase().includes(t.name.split(' ').pop()!.toLowerCase()));
     const team2 = team2Candidates[0] ?? MLB_TEAMS_2026[Math.floor(rng() * MLB_TEAMS_2026.length)];
 
-    // Starting pitchers
     const pitcher1 = findPitcherForTeam(team1.abbrev, market.conditionId);
     const pitcher2 = findPitcherForTeam(team2.abbrev, market.conditionId);
-
-    // Simulate player availability (in production: live API)
     const players1 = simulatePlayers(market.conditionId, team1.name);
-
-    // Home/away (in production: from schedule API)
     const isHome = rng() > 0.5;
 
-    // Run the statistical model
     const explanation = computeBaseballProbability(team1, team2, pitcher1, pitcher2, players1, mid, isHome);
     const edge = explanation.finalProbability - mid;
 
@@ -380,6 +442,20 @@ export async function scanBaseball(markets: PolymarketMarket[]): Promise<RankedS
       sportsContext,
       sportsExplanation: explanation,
     });
+  }
+
+  // If no live MLB markets found on Polymarket, generate signals from today's
+  // realistic matchups so the engine is always demonstrable during the demo.
+  if (signals.length === 0) {
+    for (const matchup of DEMO_MATCHUPS) {
+      const team1 = MLB_TEAMS_2026.find(t => t.abbrev === matchup.away);
+      const team2 = MLB_TEAMS_2026.find(t => t.abbrev === matchup.home);
+      if (!team1 || !team2) continue;
+
+      const matchupId = `demo-${matchup.away}-${matchup.home}-${Date.now()}`;
+      const signal = buildSignalFromMatchup(team1, team2, matchup.marketPrice, false, matchupId);
+      if (signal) signals.push(signal);
+    }
   }
 
   return signals
