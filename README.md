@@ -4,11 +4,10 @@
 
 ## Demo
 
-[![Lineup Demo](https://img.youtube.com/vi/l2AGKneifeQ/maxresdefault.jpg)](https://youtu.be/l2AGKneifeQ)
+[![Lineup Demo](https://img.youtube.com/vi/l2AGKneifeQ/maxresdefault.jpg)](https://youtu.be/Xc0053-heSc)
 
 **[Watch the demo on YouTube](https://youtu.be/Xc0053-heSc)**
 
-(the demo got glitched out due to my laptop screen recording software which only kept the audio mainly intact)
 ---
 
 ## What is Lineup?
