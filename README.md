@@ -1,5 +1,4 @@
-# PolyEdge — Prediction Market Alpha Platform
-
+# Lineup
 > Quantitative edge for Polymarket traders. 8 strategy scanners, walk-forward backtesting, domain-specific ML models, and an AI-powered intel verification layer — all in one dashboard.
 
 ---
