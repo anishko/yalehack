@@ -1,8 +1,27 @@
 import type { ScannerType, StrategyPerformance, OptimizedBlend } from '@/types';
 import { computeMaxDrawdown, computeProfitFactor, computeCalmar, computeEquityCurve } from './sharpe';
-import { fetchResolvedMarkets, parseMarketCategory } from '@/lib/polymarket/gamma';
+import { fetchResolvedMarkets, parseMarketCategory, type GammaMarket } from '@/lib/polymarket/gamma';
 import { getPricesHistory } from '@/lib/polymarket/clob';
 import type { BacktestTrade } from '@/types';
+
+// Category relevance filter — same as backtest.ts
+const SPORT_KW = /\bnba\b|nfl\b|mlb\b|nhl\b|soccer|premier league|ufc|mma|stanley cup|super bowl|lakers|celtics|warriors|chiefs/i;
+const MM_KW = /march madness|ncaa|final four|sweet sixteen|sweet 16|elite eight|bracket|tournament/i;
+const CRYPTO_KW = /bitcoin|btc|ethereum|eth|crypto|defi|solana/i;
+const POLITICS_KW = /election|president|senator|vote|congress|trump|biden/i;
+const FINANCE_KW = /stock|market|fed|rate|gdp|recession|inflation|ipo|s&p|nasdaq/i;
+const GEO_KW = /war|conflict|military|invasion|sanctions|nato|missile/i;
+
+function isRelevant(market: GammaMarket, st: ScannerType): boolean {
+  const q = market.question.toLowerCase();
+  const cat = (market.category || '').toLowerCase();
+  if (st === 'ARB' || st === 'SPREAD' || st === 'DIVERGENCE' || st === 'VELOCITY') return true;
+  if (st === 'SOCIAL') return POLITICS_KW.test(q) || CRYPTO_KW.test(q) || cat === 'politics' || cat === 'crypto';
+  if (st === 'CROSS_DOMAIN') return FINANCE_KW.test(q) || CRYPTO_KW.test(q) || GEO_KW.test(q);
+  if (st === 'SPORTS') return SPORT_KW.test(q) || cat === 'sports';
+  if (st === 'MARCH_MADNESS') return MM_KW.test(q) || cat === 'ncaa';
+  return true;
+}
 
 // Per-trade Sharpe: mean(trade returns) / std(trade returns) * sqrt(trades_per_year)
 function perTradeSharpe(tradeReturns: number[], tradesPerMonth: number): number {
@@ -115,6 +134,7 @@ async function fetchAllStrategyTrades(lookbackDays: number): Promise<Record<Scan
         const positionSize = 100;
 
         for (const st of allTypes) {
+          if (!isRelevant(market, st)) continue;
           const signal = evaluateEntry(yesPrice, noPrice, entryPrices, st);
           if (!signal) continue;
 

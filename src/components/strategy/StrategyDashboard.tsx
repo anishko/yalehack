@@ -13,7 +13,11 @@ export default function StrategyDashboard({ signals }: { signals: RankedSignal[]
   useEffect(() => {
     fetch('/api/strategy/performance')
       .then(r => r.json())
-      .then(d => { setBlend(d); setLoading(false); })
+      .then(d => {
+        if (d.error) { setLoading(false); return; }
+        setBlend(d);
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
   }, []);
 
@@ -71,8 +75,14 @@ export default function StrategyDashboard({ signals }: { signals: RankedSignal[]
 
       {/* Strategy cards */}
       {loading ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
-          {Array(8).fill(0).map((_, i) => <SkeletonCard key={i} />)}
+        <div>
+          <div style={{ textAlign: 'center', padding: '12px 0 16px', color: 'var(--text-muted)', fontSize: 12 }}>
+            <span className="spin" style={{ marginRight: 8 }}>⟳</span>
+            Fetching resolved Polymarket contracts and computing real performance...
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+            {Array(8).fill(0).map((_, i) => <SkeletonCard key={i} />)}
+          </div>
         </div>
       ) : blend ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
@@ -91,10 +101,11 @@ export default function StrategyDashboard({ signals }: { signals: RankedSignal[]
         <div style={{ marginTop: 12, padding: '10px 14px', background: 'var(--bg)', borderRadius: 8, fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
           <Tooltip content="Strategy Blend: The system combines 6 different strategies. Each wins some of the time. Together, properly weighted, they produce a smoother, higher Edge Score than any single strategy alone.">
             <span style={{ cursor: 'default' }}>
-              ⓘ <strong>Wt</strong> = % of bet sizing allocated to each strategy.{' '}
-              <strong>ES</strong> = Edge Score (Sharpe Ratio).{' '}
+              ⓘ All metrics computed on <strong>real resolved Polymarket contracts</strong> — no simulated data.{' '}
+              <strong>Wt</strong> = % of bet sizing.{' '}
+              <strong>Sharpe</strong> = per-trade risk-adjusted return.{' '}
               <strong>WR</strong> = Win Rate.{' '}
-              The blend beats the best single strategy by diversifying across uncorrelated signals.
+              Strategies only evaluated on markets matching their category (Sports scanner only runs on sports markets, etc.).
             </span>
           </Tooltip>
         </div>

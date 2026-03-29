@@ -25,12 +25,58 @@ interface EntrySignal {
   scannerType: ScannerType;
 }
 
+// ─── Category relevance filter ────────────────────────────────────────────────
+// Only evaluate a market with a scanner if it's the kind of market that scanner
+// would actually detect on the live dashboard. No point backtesting the SPORTS
+// scanner on a crypto market.
+const SPORT_KEYWORDS = /\bnba\b|nfl\b|mlb\b|nhl\b|soccer|premier league|ufc|mma|fight|tennis|wimbledon|lakers|celtics|warriors|chiefs|eagles|cowboys|yankees|dodgers|stanley cup|super bowl/i;
+const MM_KEYWORDS = /march madness|ncaa|final four|sweet sixteen|sweet 16|elite eight|bracket|tournament.*advance/i;
+const CRYPTO_KEYWORDS = /bitcoin|btc|ethereum|eth|crypto|defi|solana|dogecoin|nft/i;
+const POLITICS_KEYWORDS = /election|president|senator|vote|congress|democrat|republican|trump|biden|governor|parliament/i;
+const FINANCE_KEYWORDS = /stock|market|fed|rate|gdp|recession|inflation|earnings|ipo|s&p|nasdaq|dow/i;
+const GEOPOLITICS_KEYWORDS = /war|conflict|military|invasion|sanctions|nato|missile|nuclear|territory/i;
+
+function isRelevantToScanner(market: GammaMarket, scannerType: ScannerType): boolean {
+  const q = market.question.toLowerCase();
+  const cat = (market.category || '').toLowerCase();
+
+  switch (scannerType) {
+    case 'ARB':
+    case 'SPREAD':
+    case 'DIVERGENCE':
+      // These are market-structure scanners — work on any market
+      return true;
+
+    case 'VELOCITY':
+      // Momentum works best on high-volume markets — accept all but filter by having enough history
+      return true;
+
+    case 'SOCIAL':
+      // Social sentiment works on politically/culturally charged markets
+      return POLITICS_KEYWORDS.test(q) || CRYPTO_KEYWORDS.test(q) || cat === 'politics' || cat === 'crypto';
+
+    case 'CROSS_DOMAIN':
+      // Cross-domain needs finance/crypto/geopolitics connection
+      return FINANCE_KEYWORDS.test(q) || CRYPTO_KEYWORDS.test(q) || GEOPOLITICS_KEYWORDS.test(q) || cat === 'finance' || cat === 'crypto';
+
+    case 'SPORTS':
+      return SPORT_KEYWORDS.test(q) || cat === 'sports';
+
+    case 'MARCH_MADNESS':
+      return MM_KEYWORDS.test(q) || cat === 'ncaa' || cat === 'basketball';
+
+    default:
+      return true;
+  }
+}
+
 function evaluateEntry(
   market: GammaMarket,
   priceHistory: Array<{ t: number; p: number }>,
   scannerType: ScannerType,
 ): EntrySignal | null {
   if (priceHistory.length < 5) return null;
+  if (!isRelevantToScanner(market, scannerType)) return null;
 
   const prices = priceHistory.map(h => h.p);
   const latest = prices[prices.length - 1];
