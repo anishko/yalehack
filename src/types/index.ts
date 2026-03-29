@@ -196,6 +196,7 @@ export interface BacktestResult {
   // New metrics
   brierScore: number;                // calibration accuracy (lower = better)
   sortinoRatio: number;              // Sharpe but only penalises downside vol
+  profitVolatility: number;          // mean return / std dev (all trades)
   edgePerDollar: number;             // average return per dollar risked
   monteCarlo: MonteCarloResult;      // bootstrap p-value and percentile bounds
   equityCurve: Array<{ t: number; equity: number }>;

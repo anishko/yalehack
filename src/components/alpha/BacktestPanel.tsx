@@ -4,22 +4,9 @@ import { ResponsiveContainer, LineChart, Line, Tooltip as RechartTooltip, XAxis,
 import type { BacktestResult } from '@/types';
 import { edgeScoreColor } from '@/lib/alpha/sharpe';
 
-const STRATEGY_OPTIONS = [
-  { value: 'BLENDED',       label: 'Blended (Optimal Mix)' },
-  { value: 'ARB',           label: 'Arbitrage' },
-  { value: 'SPREAD',        label: 'Spread' },
-  { value: 'VELOCITY',      label: 'Momentum' },
-  { value: 'DIVERGENCE',    label: 'Divergence' },
-  { value: 'SOCIAL',        label: 'Social' },
-  { value: 'CROSS_DOMAIN',  label: 'Cross-Domain' },
-  { value: 'SPORTS',        label: '🏀 Sports (Niche)' },
-  { value: 'BASEBALL', label: '⚾ Baseball' },
-];
-
-const CI_LEVELS = [80, 90, 95, 99];
 
 export default function BacktestPanel() {
-  const [strategy, setStrategy] = useState('BLENDED');
+  const strategy = 'BLENDED';
   const [days, setDays] = useState(90);
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -28,9 +15,6 @@ export default function BacktestPanel() {
   const [demoActive, setDemoActive] = useState(false);
   const [demoStep, setDemoStep] = useState(0);
   const demoRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // CI level for display
-  const [ciLevel, setCiLevel] = useState(95);
 
   const runBacktest = async () => {
     stopDemo();
@@ -93,20 +77,6 @@ export default function BacktestPanel() {
 
   const demoProgress = curveLength > 1 ? Math.round((displayLength / curveLength) * 100) : 0;
 
-  // Recompute CI stats at selected level (using approximation from result CI at 95 then rescaling by z)
-  const Z_SCORES: Record<number, number> = { 80: 1.282, 90: 1.645, 95: 1.960, 99: 2.576 };
-  let ciLower = result?.confidenceInterval.lower ?? 0;
-  let ciUpper = result?.confidenceInterval.upper ?? 0;
-  if (result && ciLevel !== 95) {
-    const z95 = 1.96;
-    const zNew = Z_SCORES[ciLevel] ?? 1.96;
-    const mid = (ciLower + ciUpper) / 2;
-    const halfWidth95 = (ciUpper - ciLower) / 2;
-    const halfWidthNew = halfWidth95 * (zNew / z95);
-    ciLower = Math.round((mid - halfWidthNew) * 100) / 100;
-    ciUpper = Math.round((mid + halfWidthNew) * 100) / 100;
-  }
-
   return (
     <div style={{
       background: 'var(--bg-card)',
@@ -122,20 +92,12 @@ export default function BacktestPanel() {
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <select
-            value={strategy}
-            onChange={e => setStrategy(e.target.value)}
-            style={{ padding: '6px 10px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: 12, outline: 'none', cursor: 'pointer' }}
-          >
-            {STRATEGY_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
-          <select
             value={days}
             onChange={e => setDays(Number(e.target.value))}
             style={{ padding: '6px 10px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: 12, outline: 'none', cursor: 'pointer' }}
           >
             <option value={30}>30 days</option>
             <option value={90}>90 days</option>
-            <option value={180}>180 days</option>
           </select>
           <button
             onClick={runBacktest}
@@ -182,18 +144,18 @@ export default function BacktestPanel() {
             Sharpe ratio computed on <strong style={{ color: 'var(--cyan)' }}>out-of-sample holdout (last 30%)</strong> — in-sample shown for reference only. No look-ahead bias.
           </div>
 
-          {/* Primary stats grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 12 }}>
+          {/* Stats grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 12 }}>
             {[
               { label: 'Sharpe (OOS)', value: result.edgeScore.toFixed(2), color: esColor },
               { label: 'Sharpe (IS)', value: result.inSampleEdgeScore?.toFixed(2) ?? '—', color: 'var(--text-muted)' },
               { label: 'Win Rate', value: `${result.winRate}%`, color: 'var(--green)' },
-              { label: 'Total Return', value: `${result.totalReturn >= 0 ? '+' : ''}${result.totalReturn.toFixed(1)}%`, color: result.totalReturn >= 0 ? 'var(--green)' : 'var(--red)' },
+              { label: 'ROI', value: `${result.totalReturn >= 0 ? '+' : ''}${result.totalReturn.toFixed(1)}%`, color: result.totalReturn >= 0 ? 'var(--green)' : 'var(--red)' },
               { label: 'Max Drawdown', value: `-${result.maxDrawdown.toFixed(1)}%`, color: 'var(--red)' },
               { label: 'Profit Factor', value: result.profitFactor.toFixed(2), color: 'var(--cyan)' },
+              { label: 'Profit / Vol', value: result.profitVolatility?.toFixed(2) ?? '—', color: 'var(--cyan)' },
+              { label: 'Sortino Ratio', value: result.sortinoRatio?.toFixed(2) ?? '—', color: 'var(--cyan)' },
               { label: 'Total Trades', value: result.totalTrades.toString(), color: 'var(--text)' },
-              { label: 'Avg Win', value: `$${result.avgWin.toFixed(2)}`, color: 'var(--green)' },
-              { label: 'Avg Loss', value: `$${result.avgLoss.toFixed(2)}`, color: 'var(--red)' },
             ].map(s => (
               <div key={s.label} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
                 <div data-mono style={{ fontSize: 15, fontWeight: 700, color: s.color }}>{s.value}</div>
@@ -202,85 +164,7 @@ export default function BacktestPanel() {
             ))}
           </div>
 
-          {/* Prediction-market-native metrics */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 12 }}>
-            {[
-              { label: 'Brier Score', value: result.brierScore?.toFixed(3) ?? '—', color: (result.brierScore ?? 1) < 0.25 ? 'var(--green)' : (result.brierScore ?? 1) < 0.35 ? 'var(--gold)' : 'var(--red)', tip: 'Calibration accuracy. Lower = better. <0.25 = well-calibrated, >0.35 = poor' },
-              { label: 'Sortino Ratio', value: result.sortinoRatio?.toFixed(2) ?? '—', color: 'var(--cyan)', tip: 'Like Sharpe but only penalizes downside volatility. Higher = better.' },
-              { label: 'Edge/Dollar', value: `$${result.edgePerDollar?.toFixed(4) ?? '0'}`, color: (result.edgePerDollar ?? 0) >= 0.03 ? 'var(--green)' : 'var(--gold)', tip: 'Average return per dollar risked. Casinos run $0.02-0.05. We target $0.03+.' },
-              { label: 'MC p-value', value: `${result.monteCarlo?.pValue ?? 0}%`, color: (result.monteCarlo?.pValue ?? 0) >= 90 ? 'var(--green)' : (result.monteCarlo?.pValue ?? 0) >= 70 ? 'var(--gold)' : 'var(--red)', tip: 'Monte Carlo: % of 10K reshuffled orderings that are still profitable. >90% = not luck.' },
-              { label: 'MC 5th–95th', value: `${result.monteCarlo?.percentile5?.toFixed(1) ?? 0}% / ${result.monteCarlo?.percentile95?.toFixed(1) ?? 0}%`, color: 'var(--text-secondary)', tip: '5th and 95th percentile total returns across 10K bootstraps. Shows tail risk.' },
-            ].map(s => (
-              <div key={s.label} title={s.tip} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px', cursor: 'help' }}>
-                <div data-mono style={{ fontSize: 14, fontWeight: 700, color: s.color }}>{s.value}</div>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Alpha / benchmark stats grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 16 }}>
-            {[
-              { label: 'Alpha vs S&P', value: `${result.alpha >= 0 ? '+' : ''}${result.alpha.toFixed(1)}%`, color: result.alpha >= 0 ? 'var(--green)' : 'var(--red)', tip: "Jensen's Alpha: excess return above what CAPM predicts" },
-              { label: 'Beta', value: result.beta.toFixed(2), color: 'var(--cyan)', tip: 'Correlation/sensitivity vs S&P 500. <1 = lower market exposure' },
-              { label: 'S&P Return', value: `${result.benchmarkReturn >= 0 ? '+' : ''}${result.benchmarkReturn.toFixed(1)}%`, color: 'var(--text-secondary)', tip: 'Simulated S&P 500 return over same period' },
-              { label: 'Info Ratio', value: result.informationRatio.toFixed(2), color: 'var(--gold)', tip: 'Active return / tracking error. Measures consistency of outperformance' },
-              { label: 'Treynor Ratio', value: result.treynorRatio.toFixed(2), color: '#a78bfa', tip: `(Return - RF) / Beta. RF = ${(result.treasuryRate * 100).toFixed(1)}% 10-yr Treasury` },
-            ].map(s => (
-              <div key={s.label} title={s.tip} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px', cursor: 'help' }}>
-                <div data-mono style={{ fontSize: 15, fontWeight: 700, color: s.color }}>{s.value}</div>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Confidence Interval */}
-          <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '12px 14px', marginBottom: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
-                CONFIDENCE INTERVAL — DAILY RETURN
-              </div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {CI_LEVELS.map(lvl => (
-                  <button
-                    key={lvl}
-                    onClick={() => setCiLevel(lvl)}
-                    style={{
-                      padding: '3px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700, cursor: 'pointer',
-                      background: ciLevel === lvl ? 'var(--cyan-dim)' : 'transparent',
-                      border: `1px solid ${ciLevel === lvl ? 'var(--cyan)' : 'var(--border)'}`,
-                      color: ciLevel === lvl ? 'var(--cyan)' : 'var(--text-muted)',
-                    }}
-                  >
-                    {lvl}%
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ textAlign: 'center' }}>
-                <div data-mono style={{ fontSize: 18, fontWeight: 800, color: 'var(--red)' }}>{ciLower}%</div>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Lower bound</div>
-              </div>
-              <div style={{ flex: 1, position: 'relative', height: 8 }}>
-                <div style={{ position: 'absolute', inset: 0, background: 'var(--border)', borderRadius: 4 }} />
-                <div style={{
-                  position: 'absolute', top: 0, bottom: 0, left: '10%', right: '10%',
-                  background: `linear-gradient(90deg, var(--red-dim), var(--cyan-dim), var(--green-dim))`,
-                  borderRadius: 4, opacity: 0.8,
-                }} />
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div data-mono style={{ fontSize: 18, fontWeight: 800, color: 'var(--green)' }}>{ciUpper}%</div>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Upper bound</div>
-              </div>
-            </div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 6, textAlign: 'center' }}>
-              {ciLevel}% confidence that daily return falls between {ciLower}% and {ciUpper}% · RF = {(result.treasuryRate * 100).toFixed(1)}% (10-yr Treasury)
-            </div>
-          </div>
-
-          {/* Dual equity curve chart */}
+          {/* Equity curve chart */}
           {chartData.length > 2 && (
             <div style={{ height: 160 }}>
               <ResponsiveContainer width="100%" height="100%">

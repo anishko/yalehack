@@ -356,7 +356,7 @@ export async function computeBacktest(
     treasuryRate: TREASURY_RATE,
     benchmarkEquityCurve: [{ t: 0, equity: 10000 }],
     confidenceInterval: { level: 95, lower: 0, upper: 0, z: 1.96 },
-    brierScore: 1, sortinoRatio: 0, edgePerDollar: 0,
+    brierScore: 1, sortinoRatio: 0, profitVolatility: 0, edgePerDollar: 0,
     monteCarlo: { pValue: 0, percentile5: 0, percentile95: 0 },
     equityCurve: [{ t: 0, equity: 10000 }],
     categoryBreakdown: [],
@@ -444,6 +444,15 @@ export async function computeBacktest(
   const downsideStd = Math.sqrt(downsideVar);
   const sortinoRatio = downsideStd > 0 ? Math.round((oosMean / downsideStd) * 100) / 100 : 0;
 
+  // ── Profit / Volatility (mean return / std dev, all trades) ───────────────
+  const profitVolatility = (() => {
+    if (allReturns.length < 2) return 0;
+    const m = allReturns.reduce((s, r) => s + r, 0) / allReturns.length;
+    const std = Math.sqrt(allReturns.reduce((s, r) => s + (r - m) ** 2, 0) / (allReturns.length - 1));
+    if (std === 0) return m > 0 ? 5.0 : 0;
+    return Math.round((m / std) * 100) / 100;
+  })();
+
   // ── Edge per Dollar ───────────────────────────────────────────────────────
   const edgeTrades = allTrades.map(t => ({
     pnl: t.pnl,
@@ -493,6 +502,7 @@ export async function computeBacktest(
     confidenceInterval,
     brierScore,
     sortinoRatio,
+    profitVolatility,
     edgePerDollar,
     monteCarlo,
     equityCurve: equity,
