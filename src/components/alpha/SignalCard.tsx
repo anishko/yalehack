@@ -121,11 +121,6 @@ export default function SignalCard({ signal, cash = 10000 }: { signal: RankedSig
         </p>
       </Link>
 
-      {/* Summary */}
-      <p style={{ margin: 0, fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-        {signal.summary}
-      </p>
-
       {/* Stats row */}
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         <Tooltip content="Sharpe Ratio for this signal type. Risk-adjusted return vs 4.4% Treasury rate.">
@@ -137,9 +132,6 @@ export default function SignalCard({ signal, cash = 10000 }: { signal: RankedSig
         <Tooltip content="Profit Potential: Expected return per dollar if this signal plays out.">
           <StatPill label="Profit Potential" value={`+${(signal.expectedEdge * 100).toFixed(1)}%`} color="var(--green)" />
         </Tooltip>
-        {signal.relatedAsset && (
-          <StatPill label="Asset" value={signal.relatedAsset} color="var(--gold)" />
-        )}
       </div>
 
       {/* Sports context panel */}

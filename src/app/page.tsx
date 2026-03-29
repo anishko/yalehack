@@ -3,14 +3,12 @@ import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import IntelSidebar from '@/components/layout/IntelSidebar';
 import SignalTicker from '@/components/layout/SignalTicker';
-// import StrategyDashboard from '@/components/strategy/StrategyDashboard'; // hidden from UI
 import SignalCard from '@/components/alpha/SignalCard';
 import BacktestPanel from '@/components/alpha/BacktestPanel';
-import MarketCard from '@/components/market/MarketCard';
 import SearchBar from '@/components/shared/SearchBar';
 import CategoryFilter from '@/components/shared/CategoryFilter';
 import { SkeletonCard } from '@/components/shared/Skeleton';
-import type { RankedSignal, PolymarketMarket } from '@/types';
+import type { RankedSignal } from '@/types';
 
 function SportsTab({ signals, loading, scanning, cash }: { signals: RankedSignal[]; loading: boolean; scanning: boolean; cash: number }) {
   const sportsSignals = signals.filter(s => s.scannerType === 'SPORTS');
@@ -77,31 +75,13 @@ function SportsTab({ signals, loading, scanning, cash }: { signals: RankedSignal
 
 export default function HomePage() {
   const [signals, setSignals] = useState<RankedSignal[]>([]);
-  const [markets, setMarkets] = useState<PolymarketMarket[]>([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
-  const [tab, setTab] = useState<'signals' | 'markets' | 'backtest' | 'sports'>('signals');
+  const [tab, setTab] = useState<'signals' | 'backtest' | 'sports'>('signals');
   const [portfolio, setPortfolio] = useState<{ cash: number }>({ cash: 10000 });
-  const [errors, setErrors] = useState<{ markets?: string; signals?: string; portfolio?: string }>({});
-
-  const loadMarkets = useCallback(async () => {
-    try {
-      const params = new URLSearchParams();
-      if (search) params.set('q', search);
-      if (category !== 'All') params.set('category', category);
-      params.set('limit', '24');
-      const res = await fetch(`/api/markets?${params}`);
-      if (!res.ok) throw new Error(`Markets API returned ${res.status}`);
-      const data = await res.json();
-      setMarkets(data.markets || []);
-      setErrors(prev => ({ ...prev, markets: undefined }));
-    } catch (err) {
-      console.error('[markets] Failed to load:', err);
-      setErrors(prev => ({ ...prev, markets: String(err) }));
-    }
-  }, [search, category]);
+  const [errors, setErrors] = useState<{ signals?: string; portfolio?: string }>({});
 
   const runScan = useCallback(async () => {
     setScanning(true);
@@ -123,11 +103,11 @@ export default function HomePage() {
     setScanning(false);
   }, []);
 
-  // On mount: load markets and portfolio only (no heavy scan)
+  // On mount: load portfolio and run scan automatically
   useEffect(() => {
     setLoading(true);
     Promise.all([
-      loadMarkets(),
+      runScan(),
       fetch('/api/portfolio')
         .then(r => {
           if (!r.ok) throw new Error(`Portfolio API returned ${r.status}`);
@@ -140,10 +120,6 @@ export default function HomePage() {
         }),
     ]).finally(() => setLoading(false));
   }, []);
-
-  useEffect(() => {
-    if (!loading) loadMarkets();
-  }, [search, category]);
 
   const filteredSignals = category !== 'All'
     ? signals.filter(s => s.category?.toLowerCase() === category.toLowerCase())
@@ -162,7 +138,6 @@ export default function HomePage() {
             {[
               { key: 'signals', label: `Signals (${filteredSignals.length})` },
               { key: 'sports', label: 'Sports & NCAA' },
-              { key: 'markets', label: `Markets (${markets.length})` },
               { key: 'backtest', label: 'Track Record' },
             ].map(t => (
               <button
@@ -193,12 +168,6 @@ export default function HomePage() {
               Scan failed: {errors.signals}
             </div>
           )}
-          {errors.markets && tab === 'markets' && (
-            <div style={{ padding: '10px 14px', background: '#ef444422', border: '1px solid #ef4444', borderRadius: 8, marginBottom: 12, fontSize: 12, color: '#ef4444' }}>
-              Failed to load markets: {errors.markets}
-            </div>
-          )}
-
           {/* Signals tab */}
           {tab === 'signals' && (
             <>
@@ -225,13 +194,6 @@ export default function HomePage() {
 
           {tab === 'sports' && (
             <SportsTab signals={signals} loading={false} scanning={scanning} cash={portfolio.cash} />
-          )}
-
-          {tab === 'markets' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-              {loading ? Array(12).fill(0).map((_, i) => <SkeletonCard key={i} />)
-                : markets.map(m => <MarketCard key={m.conditionId} market={m} />)}
-            </div>
           )}
 
           {tab === 'backtest' && <BacktestPanel />}
