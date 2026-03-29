@@ -150,6 +150,7 @@ export async function scanSports(markets: PolymarketMarket[]): Promise<RankedSig
       summary: `${sport} model: ${(modelProb * 100).toFixed(1)}% vs market ${(marketProb * 100).toFixed(1)}% — ${Math.abs(edge * 100).toFixed(1)}pp edge`,
       details: `${injuryNote}. Recent form: ${(form1 * 100).toFixed(0)}% vs ${(form2 * 100).toFixed(0)}% (last 5 games). Hook live Rotowire data for real injury status.`,
       timestamp: Date.now(),
+      marketPrice: mid,
       category: 'Sports',
       sportsContext,
     });

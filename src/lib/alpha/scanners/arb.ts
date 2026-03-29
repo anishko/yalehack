@@ -45,6 +45,7 @@ export async function scanArbitrage(markets: PolymarketMarket[]): Promise<Ranked
         summary: `Arb: YES+NO = $${total.toFixed(3)} — buy both, guarantee $${arbEdge.toFixed(3)} profit`,
         details: `YES buy: $${yesPrice.toFixed(3)}, NO buy: $${noPrice.toFixed(3)}, Sum: $${total.toFixed(3)}, Edge: $${arbEdge.toFixed(4)} per dollar`,
         timestamp: Date.now(),
+        marketPrice: yesPrice,
         category: market.category,
       });
     }

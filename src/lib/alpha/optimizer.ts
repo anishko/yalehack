@@ -104,8 +104,23 @@ async function fetchAllStrategyTrades(lookbackDays: number): Promise<Record<Scan
     const batch = resolvedMarkets.slice(i, i + batchSize);
     const batchResults = await Promise.allSettled(
       batch.map(async (market) => {
-        const yesToken = market.tokens?.find(t => t.outcome === 'Yes' || t.outcome === 'YES');
-        const noToken = market.tokens?.find(t => t.outcome === 'No' || t.outcome === 'NO');
+        // Determine outcome from outcomePrices
+        if (!market.outcomePrices) return;
+        let outcomeYesWon: boolean;
+        try {
+          const prices = typeof market.outcomePrices === 'string'
+            ? JSON.parse(market.outcomePrices) as string[]
+            : market.outcomePrices as unknown as string[];
+          const yp = parseFloat(prices[0]);
+          const np = parseFloat(prices[1]);
+          if (yp < 0.1 && np < 0.1) return; // not resolved yet
+          outcomeYesWon = yp > 0.5;
+        } catch { return; }
+
+        // Fetch individual market to get token IDs for price history
+        const { fetchMarketById } = await import('@/lib/polymarket/gamma');
+        const fullMarket = await fetchMarketById(market.conditionId);
+        const yesToken = fullMarket?.tokens?.find(t => t.outcome === 'Yes' || t.outcome === 'YES');
         if (!yesToken?.token_id) return;
 
         const priceHistory = await getPricesHistory(yesToken.token_id, '1d', 60);
@@ -116,19 +131,8 @@ async function fetchAllStrategyTrades(lookbackDays: number): Promise<Record<Scan
         const entryPrices = prices.slice(0, splitIdx);
         if (entryPrices.length < 5) return;
 
-        let yesPrice = entryPrices[entryPrices.length - 1];
-        let noPrice = 1 - yesPrice;
-        if (market.outcomePrices) {
-          try {
-            const parsed = JSON.parse(market.outcomePrices) as string[];
-            if (parsed[0]) yesPrice = parseFloat(parsed[0]);
-            if (parsed[1]) noPrice = parseFloat(parsed[1]);
-          } catch {}
-        }
-
-        const yesWon = yesToken?.winner === true;
-        const noWon = noToken?.winner === true;
-        if (!yesWon && !noWon) return;
+        const yesPrice = entryPrices[entryPrices.length - 1];
+        const noPrice = 1 - yesPrice;
 
         const category = parseMarketCategory(market);
         const positionSize = 100;
@@ -138,7 +142,7 @@ async function fetchAllStrategyTrades(lookbackDays: number): Promise<Record<Scan
           const signal = evaluateEntry(yesPrice, noPrice, entryPrices, st);
           if (!signal) continue;
 
-          const won = signal.direction === 'YES' ? yesWon : noWon;
+          const won = signal.direction === 'YES' ? outcomeYesWon : !outcomeYesWon;
           const exitPrice = won ? 1.0 : 0.0;
           const pnl = won
             ? positionSize * (exitPrice - signal.entryPrice)

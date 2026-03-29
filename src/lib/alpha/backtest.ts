@@ -5,7 +5,7 @@ import {
   computeConfidenceInterval, generateSP500Returns, TREASURY_RATE,
   computeBrierScore, computeSortino, computeEdgePerDollar, computeMonteCarloBootstrap,
 } from './sharpe';
-import { fetchResolvedMarkets, parseMarketCategory, type GammaMarket } from '@/lib/polymarket/gamma';
+import { fetchResolvedMarkets, fetchMarketById, parseMarketCategory, type GammaMarket } from '@/lib/polymarket/gamma';
 import { getPricesHistory } from '@/lib/polymarket/clob';
 
 // ─── Real Backtest Engine ─────────────────────────────────────────────────────
@@ -173,21 +173,42 @@ function evaluateEntry(
 }
 
 // ─── Determine trade outcome from resolved market ─────────────────────────────
+// Gamma API returns outcomePrices: ["1","0"] (YES won) or ["0","1"] (NO won)
+// on resolved markets. tokens.winner is NOT returned by the list endpoint.
 function resolveOutcome(
   market: GammaMarket,
   signal: EntrySignal,
 ): { won: boolean; exitPrice: number } | null {
+  // Try outcomePrices first (always available on resolved markets)
+  if (market.outcomePrices) {
+    try {
+      const prices = typeof market.outcomePrices === 'string'
+        ? JSON.parse(market.outcomePrices) as string[]
+        : market.outcomePrices as unknown as string[];
+
+      if (prices.length >= 2) {
+        const yesPrice = parseFloat(prices[0]);
+        const noPrice = parseFloat(prices[1]);
+
+        // Resolved: one price is 1 (or very close), the other is 0
+        if (yesPrice > 0.9 || noPrice > 0.9 || yesPrice < 0.1 || noPrice < 0.1) {
+          const yesWon = yesPrice > 0.5;
+          if (signal.direction === 'YES') {
+            return { won: yesWon, exitPrice: yesWon ? 1.0 : 0.0 };
+          } else {
+            return { won: !yesWon, exitPrice: !yesWon ? 1.0 : 0.0 };
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // Fallback: try tokens.winner
   const tokens = market.tokens || [];
   const yesToken = tokens.find(t => t.outcome === 'Yes' || t.outcome === 'YES');
   const noToken = tokens.find(t => t.outcome === 'No' || t.outcome === 'NO');
-
-  if (!yesToken && !noToken) return null;
-
-  // winner field tells us the actual outcome
   const yesWon = yesToken?.winner === true;
   const noWon = noToken?.winner === true;
-
-  // If no winner is set, market may not be fully resolved
   if (!yesWon && !noWon) return null;
 
   if (signal.direction === 'YES') {
@@ -220,8 +241,9 @@ async function fetchHistoricalTrades(
 
     const batchResults = await Promise.allSettled(
       batch.map(async (market) => {
-        // Get YES token for price history
-        const yesToken = market.tokens?.find(t => t.outcome === 'Yes' || t.outcome === 'YES');
+        // Fetch individual market to get token IDs (list endpoint doesn't include them)
+        const fullMarket = await fetchMarketById(market.conditionId);
+        const yesToken = fullMarket?.tokens?.find(t => t.outcome === 'Yes' || t.outcome === 'YES');
         if (!yesToken?.token_id) return [];
 
         // Fetch real historical prices

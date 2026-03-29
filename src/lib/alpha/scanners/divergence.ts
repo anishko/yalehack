@@ -50,6 +50,7 @@ export async function scanDivergence(markets: PolymarketMarket[]): Promise<Ranke
           summary: `Divergence: ${pricedGroup.length} related markets sum to ${sumOfMids.toFixed(3)} (not 1.0) — ${(divergence * 100).toFixed(1)}% gap`,
           details: `${pricedGroup.map(m => `${m.market.question.slice(0, 30)}: $${m.mid.toFixed(3)}`).join(' | ')} → Sum: ${sumOfMids.toFixed(3)}`,
           timestamp: Date.now(),
+          marketPrice: candidate.mid,
           category: candidate.market.category,
         });
       }

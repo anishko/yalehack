@@ -91,6 +91,7 @@ export interface RankedSignal {
   details: string;
   timestamp: number;
   category?: string;
+  marketPrice?: number;         // live YES price at signal time
   relatedAsset?: string;       // for CROSS_DOMAIN
   intelBoost?: number;         // from verified intel sources
   sportsContext?: SportsContext; // for SPORTS / MARCH_MADNESS

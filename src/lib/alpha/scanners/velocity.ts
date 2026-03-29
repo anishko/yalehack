@@ -50,6 +50,7 @@ export async function scanVelocity(markets: PolymarketMarket[]): Promise<RankedS
         summary: `${momentum.toFixed(1)}% move in last 5hrs — ${isAccelerating ? 'accelerating' : 'steady'} ${direction === 'YES' ? 'upward' : 'downward'} momentum`,
         details: `Price: $${oldest.toFixed(3)} → $${newest.toFixed(3)} (${pctChange > 0 ? '+' : ''}${(pctChange * 100).toFixed(2)}%), Avg velocity: ${(avgVelocity * 100).toFixed(3)}/hr`,
         timestamp: Date.now(),
+        marketPrice: newest,
         category: market.category,
       });
     }

@@ -121,6 +121,7 @@ export async function scanCrossDomain(markets: PolymarketMarket[]): Promise<Rank
           summary: `${mover.label} ${mover.direction === 'UP' ? '▲' : '▼'} ${magnitude.toFixed(2)}% — linked market at $${market.midPrice?.toFixed(3) ?? '?'} hasn't priced it in`,
           details: `${mover.symbol}: $${mover.quote.c.toFixed(2)} (${mover.quote.dp > 0 ? '+' : ''}${mover.quote.dp.toFixed(2)}%) | Market: ${market.question.slice(0, 60)}`,
           timestamp: Date.now(),
+          marketPrice: market.midPrice ?? 0.5,
           category: market.category,
           relatedAsset: mover.symbol,
         });

@@ -28,6 +28,14 @@ export default function PortfolioPage() {
     loadData();
   };
 
+  const handleCloseAll = async () => {
+    if (!stats?.positions.length) return;
+    for (const p of stats.positions) {
+      await fetch(`/api/portfolio/${p.id}`, { method: 'DELETE' }).catch(() => {});
+    }
+    loadData();
+  };
+
   if (loading) {
     return (
       <div style={{ minHeight: '100vh' }}>
@@ -77,9 +85,22 @@ export default function PortfolioPage() {
 
           {/* Open positions */}
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20, marginBottom: 20 }}>
-            <h3 style={{ margin: '0 0 16px', fontSize: 14, fontWeight: 700 }}>
-              Open Positions ({stats?.positions.length ?? 0})
-            </h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>
+                Open Positions ({stats?.positions.length ?? 0})
+              </h3>
+              {(stats?.positions.length ?? 0) > 1 && (
+                <button
+                  onClick={handleCloseAll}
+                  style={{
+                    padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                    background: 'var(--red-dim)', border: '1px solid var(--red)', color: 'var(--red)',
+                  }}
+                >
+                  Close All
+                </button>
+              )}
+            </div>
             {!stats?.positions.length ? (
               <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No open positions. Head to the dashboard to find signals and place bets.</p>
             ) : (

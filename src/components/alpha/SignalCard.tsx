@@ -55,6 +55,10 @@ export default function SignalCard({ signal, cash = 10000 }: { signal: RankedSig
   const handleBet = async () => {
     setBetting(true);
     try {
+      // Use the live market price captured by the scanner
+      const mid = signal.marketPrice ?? 0.5;
+      const entryPrice = signal.direction === 'YES' ? mid : 1 - mid;
+
       const res = await fetch('/api/portfolio', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -63,7 +67,7 @@ export default function SignalCard({ signal, cash = 10000 }: { signal: RankedSig
           marketQuestion: signal.marketQuestion,
           direction: signal.direction,
           amount: betAmount,
-          price: 0.5,
+          price: entryPrice,
           strategy: signal.scannerType,
           riskScore: signal.riskScore,
           category: signal.category,

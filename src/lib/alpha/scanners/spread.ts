@@ -42,6 +42,7 @@ export async function scanSpread(markets: PolymarketMarket[]): Promise<RankedSig
         summary: `Wide spread: ${(spreadPct * 100).toFixed(1)}% — mid at $${mid.toFixed(3)}`,
         details: `Bid: $${bestBid.toFixed(3)}, Ask: $${bestAsk.toFixed(3)}, Spread: $${spread.toFixed(4)} (${(spreadPct*100).toFixed(2)}%), Liquidity: $${liquidity?.toLocaleString()}`,
         timestamp: Date.now(),
+        marketPrice: mid,
         category: market.category,
       });
     }

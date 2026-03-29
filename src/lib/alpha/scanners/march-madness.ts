@@ -204,6 +204,7 @@ export async function scanMarchMadness(markets: PolymarketMarket[]): Promise<Ran
       summary: `[${round}] Seed ${seed1} vs ${seed2}: model ${(finalProb * 100).toFixed(1)}% vs market ${(mid * 100).toFixed(1)}% — ${(absEdge * 100).toFixed(1)}pp edge${upsetAlert}`,
       details: `AdjEM: +${adjEM1.toFixed(1)} vs +${adjEM2.toFixed(1)} | Tempo: ${tempo1.toFixed(0)} vs ${tempo2.toFixed(0)} | Seed prior: ${(seedPrior * 100).toFixed(0)}%${injuryNote}. Connect ESPN API for live injury updates.`,
       timestamp: Date.now(),
+      marketPrice: mid,
       category: 'NCAA',
       sportsContext,
     });
