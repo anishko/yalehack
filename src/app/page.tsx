@@ -11,34 +11,34 @@ import { SkeletonCard } from '@/components/shared/Skeleton';
 import type { RankedSignal } from '@/types';
 
 function SportsTab({ signals, loading, scanning, cash }: { signals: RankedSignal[]; loading: boolean; scanning: boolean; cash: number }) {
-  const sportsSignals = signals.filter(s => s.scannerType === 'SPORTS');
-  const ncaaSignals   = signals.filter(s => s.scannerType === 'MARCH_MADNESS');
+  const sportsSignals  = signals.filter(s => s.scannerType === 'SPORTS');
+  const baseballSignals = signals.filter(s => s.scannerType === 'BASEBALL');
 
   return (
     <div>
-      {/* NCAA Tournament / NCAAB Markets */}
+      {/* Baseball / MLB Markets (Primary) */}
       <div style={{ marginBottom: 28 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
           <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
           <div style={{ padding: '4px 16px', borderRadius: 20, background: '#fb923c22', border: '1px solid #fb923c', fontSize: 11, fontWeight: 800, color: '#fb923c', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>
-            NCAA TOURNAMENT / NCAAB MARKETS
+            MLB BASEBALL MARKETS
           </div>
           <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
         </div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.6 }}>
-          Structured statistical model: 40-year seed win rates, pre-game efficiency margins (Four Factors), pace-of-play mismatch, turnover/rebounding profiles, schedule strength, and injury-adjusted probability. Every signal shows a transparent probability breakdown.
+          Structured statistical model: Pythagorean expectation + Log5 matchup formula, starting pitcher ERA/WHIP, team OPS (OBP + SLG), bullpen quality, recent form, home/away splits, and injury-adjusted lineup probability. Every signal shows a transparent probability breakdown.
         </p>
         {loading || scanning ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
             {Array(4).fill(0).map((_, i) => <SkeletonCard key={i} />)}
           </div>
-        ) : ncaaSignals.length === 0 ? (
+        ) : baseballSignals.length === 0 ? (
           <div style={{ padding: '24px', background: 'var(--bg-card)', border: '1px solid #fb923c33', borderRadius: 10, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-            No NCAA Tournament markets currently available on Polymarket. Tournament markets typically appear mid-March through early April. Click <strong style={{ color: 'var(--cyan)' }}>SCAN NOW</strong> to check for new markets.
+            No MLB markets currently available on Polymarket. Baseball markets appear during the regular season (April–October). Click <strong style={{ color: 'var(--cyan)' }}>SCAN NOW</strong> to check for new markets.
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
-            {ncaaSignals.map(s => <SignalCard key={s.id} signal={s} cash={cash} />)}
+            {baseballSignals.map(s => <SignalCard key={s.id} signal={s} cash={cash} />)}
           </div>
         )}
       </div>
@@ -48,7 +48,7 @@ function SportsTab({ signals, loading, scanning, cash }: { signals: RankedSignal
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
           <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
           <div style={{ padding: '4px 16px', borderRadius: 20, background: '#38bdf822', border: '1px solid #38bdf8', fontSize: 11, fontWeight: 800, color: '#38bdf8', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>
-            OTHER SPORTS — NBA / NFL / MLB / NHL / SOCCER
+            OTHER SPORTS — NBA / NFL / NHL / SOCCER
           </div>
           <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
         </div>
@@ -137,7 +137,7 @@ export default function HomePage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 0, flexWrap: 'wrap' }}>
             {[
               { key: 'signals', label: `Signals (${filteredSignals.length})` },
-              { key: 'sports', label: 'Sports & NCAA' },
+              { key: 'sports', label: 'Sports & MLB' },
               { key: 'backtest', label: 'Track Record' },
             ].map(t => (
               <button

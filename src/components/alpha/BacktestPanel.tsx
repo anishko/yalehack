@@ -13,7 +13,7 @@ const STRATEGY_OPTIONS = [
   { value: 'SOCIAL',        label: 'Social' },
   { value: 'CROSS_DOMAIN',  label: 'Cross-Domain' },
   { value: 'SPORTS',        label: '🏀 Sports (Niche)' },
-  { value: 'MARCH_MADNESS', label: '🏆 March Madness' },
+  { value: 'BASEBALL', label: '⚾ Baseball' },
 ];
 
 const CI_LEVELS = [80, 90, 95, 99];

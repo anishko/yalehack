@@ -19,7 +19,7 @@ import { nanoid } from '../utils';
 const SPORT_PATTERNS: Array<{ pattern: RegExp; sport: string }> = [
   { pattern: /\bnba\b|lakers|celtics|warriors|bucks|76ers|nets|heat|nuggets|suns|clippers/i, sport: 'NBA' },
   { pattern: /\bnfl\b|super bowl|chiefs|eagles|cowboys|patriots|49ers|ravens|bills|rams/i,   sport: 'NFL' },
-  { pattern: /\bmlb\b|world series|yankees|dodgers|red sox|cubs|mets|astros|braves/i,         sport: 'MLB' },
+  // MLB handled by dedicated baseball scanner — excluded here to avoid duplicate signals
   { pattern: /\bnhl\b|stanley cup|bruins|penguins|avalanche|rangers|oilers|lightning/i,      sport: 'NHL' },
   { pattern: /\bsoccer\b|premier league|champions league|la liga|bundesliga|mls|fifa/i,      sport: 'Soccer' },
   { pattern: /\bufc\b|\bmma\b|fight|knockout|championship bout/i,                            sport: 'UFC/MMA' },

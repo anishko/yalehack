@@ -30,7 +30,7 @@ interface EntrySignal {
 // would actually detect on the live dashboard. No point backtesting the SPORTS
 // scanner on a crypto market.
 const SPORT_KEYWORDS = /\bnba\b|nfl\b|mlb\b|nhl\b|soccer|premier league|ufc|mma|fight|tennis|wimbledon|lakers|celtics|warriors|chiefs|eagles|cowboys|yankees|dodgers|stanley cup|super bowl/i;
-const MM_KEYWORDS = /march madness|ncaa|final four|sweet sixteen|sweet 16|elite eight|bracket|tournament.*advance/i;
+const MLB_KEYWORDS = /\bmlb\b|baseball|world series|pennant|yankees|dodgers|red sox|cubs|mets|astros|braves|innings|pitcher|home run/i;
 const CRYPTO_KEYWORDS = /bitcoin|btc|ethereum|eth|crypto|defi|solana|dogecoin|nft/i;
 const POLITICS_KEYWORDS = /election|president|senator|vote|congress|democrat|republican|trump|biden|governor|parliament/i;
 const FINANCE_KEYWORDS = /stock|market|fed|rate|gdp|recession|inflation|earnings|ipo|s&p|nasdaq|dow/i;
@@ -62,8 +62,8 @@ function isRelevantToScanner(market: GammaMarket, scannerType: ScannerType): boo
     case 'SPORTS':
       return SPORT_KEYWORDS.test(q) || cat === 'sports';
 
-    case 'MARCH_MADNESS':
-      return MM_KEYWORDS.test(q) || cat === 'ncaa' || cat === 'basketball';
+    case 'BASEBALL':
+      return MLB_KEYWORDS.test(q) || cat === 'baseball' || cat === 'sports';
 
     default:
       return true;
@@ -155,7 +155,7 @@ function evaluateEntry(
     }
 
     case 'SPORTS':
-    case 'MARCH_MADNESS': {
+    case 'BASEBALL': {
       // Sports markets: bet on favorites when price dips below historical mean
       const mean = prices.reduce((s, p) => s + p, 0) / prices.length;
       if (latest < mean - 0.04) {
@@ -224,7 +224,7 @@ async function fetchHistoricalTrades(
   lookbackDays: number,
 ): Promise<BacktestTrade[]> {
   const scannerTypes: ScannerType[] = scannerType === 'BLENDED'
-    ? ['ARB', 'SPREAD', 'VELOCITY', 'DIVERGENCE', 'SOCIAL', 'CROSS_DOMAIN', 'SPORTS', 'MARCH_MADNESS']
+    ? ['ARB', 'SPREAD', 'VELOCITY', 'DIVERGENCE', 'SOCIAL', 'CROSS_DOMAIN', 'SPORTS', 'BASEBALL']
     : [scannerType];
 
   // Fetch resolved markets from Polymarket (real data)

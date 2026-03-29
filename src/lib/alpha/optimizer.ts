@@ -6,7 +6,7 @@ import type { BacktestTrade } from '@/types';
 
 // Category relevance filter — same as backtest.ts
 const SPORT_KW = /\bnba\b|nfl\b|mlb\b|nhl\b|soccer|premier league|ufc|mma|stanley cup|super bowl|lakers|celtics|warriors|chiefs/i;
-const MM_KW = /march madness|ncaa|final four|sweet sixteen|sweet 16|elite eight|bracket|tournament/i;
+const MLB_KW = /\bmlb\b|baseball|world series|pennant|yankees|dodgers|red sox|cubs|mets|astros|braves|innings|pitcher|home run/i;
 const CRYPTO_KW = /bitcoin|btc|ethereum|eth|crypto|defi|solana/i;
 const POLITICS_KW = /election|president|senator|vote|congress|trump|biden/i;
 const FINANCE_KW = /stock|market|fed|rate|gdp|recession|inflation|ipo|s&p|nasdaq/i;
@@ -19,7 +19,7 @@ function isRelevant(market: GammaMarket, st: ScannerType): boolean {
   if (st === 'SOCIAL') return POLITICS_KW.test(q) || CRYPTO_KW.test(q) || cat === 'politics' || cat === 'crypto';
   if (st === 'CROSS_DOMAIN') return FINANCE_KW.test(q) || CRYPTO_KW.test(q) || GEO_KW.test(q);
   if (st === 'SPORTS') return SPORT_KW.test(q) || cat === 'sports';
-  if (st === 'MARCH_MADNESS') return MM_KW.test(q) || cat === 'ncaa';
+  if (st === 'BASEBALL') return MLB_KW.test(q) || cat === 'baseball' || cat === 'sports';
   return true;
 }
 
@@ -79,7 +79,7 @@ function evaluateEntry(
       return null;
     }
     case 'SPORTS':
-    case 'MARCH_MADNESS': {
+    case 'BASEBALL': {
       const mean = priceHistory.reduce((s, p) => s + p, 0) / priceHistory.length;
       if (latest < mean - 0.04) return { direction: 'YES', entryPrice: latest, confidence: 62 };
       if (latest > mean + 0.04) return { direction: 'NO', entryPrice: latest, confidence: 62 };
@@ -92,7 +92,7 @@ function evaluateEntry(
 
 // ─── Fetch real trades for all strategies at once ─────────────────────────────
 async function fetchAllStrategyTrades(lookbackDays: number): Promise<Record<ScannerType, BacktestTrade[]>> {
-  const allTypes: ScannerType[] = ['ARB', 'SPREAD', 'VELOCITY', 'DIVERGENCE', 'SOCIAL', 'CROSS_DOMAIN', 'SPORTS', 'MARCH_MADNESS'];
+  const allTypes: ScannerType[] = ['ARB', 'SPREAD', 'VELOCITY', 'DIVERGENCE', 'SOCIAL', 'CROSS_DOMAIN', 'SPORTS', 'BASEBALL'];
   const result: Record<string, BacktestTrade[]> = {};
   for (const t of allTypes) result[t] = [];
 
@@ -210,7 +210,7 @@ function buildStrategyPerformance(type: ScannerType, trades: BacktestTrade[]): S
   const names: Record<ScannerType, string> = {
     ARB: 'Arbitrage', SPREAD: 'Spread', VELOCITY: 'Momentum',
     DIVERGENCE: 'Divergence', SOCIAL: 'Social', CROSS_DOMAIN: 'Cross-Domain',
-    SPORTS: 'Sports', MARCH_MADNESS: 'March Madness',
+    SPORTS: 'Sports', BASEBALL: 'Baseball',
   };
 
   return {
@@ -229,7 +229,7 @@ function buildStrategyPerformance(type: ScannerType, trades: BacktestTrade[]): S
 }
 
 export async function optimizeStrategyBlend(lookbackDays = 90): Promise<OptimizedBlend> {
-  const types: ScannerType[] = ['ARB', 'SPREAD', 'VELOCITY', 'DIVERGENCE', 'SOCIAL', 'CROSS_DOMAIN', 'SPORTS', 'MARCH_MADNESS'];
+  const types: ScannerType[] = ['ARB', 'SPREAD', 'VELOCITY', 'DIVERGENCE', 'SOCIAL', 'CROSS_DOMAIN', 'SPORTS', 'BASEBALL'];
 
   // Fetch all trades once from real resolved markets
   const allStrategyTrades = await fetchAllStrategyTrades(lookbackDays);

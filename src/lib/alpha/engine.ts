@@ -6,7 +6,7 @@ import { scanDivergence } from './scanners/divergence';
 import { scanSocial } from './scanners/social';
 import { scanCrossDomain } from './scanners/cross-domain';
 import { scanSports } from './scanners/sports';
-import { scanMarchMadness } from './scanners/march-madness';
+import { scanBaseball } from './scanners/baseball';
 
 export interface ScanResult {
   signals: RankedSignal[];
@@ -19,7 +19,7 @@ export interface ScanResult {
 export async function runAllScanners(markets: PolymarketMarket[]): Promise<ScanResult> {
   const start = Date.now();
 
-  const [arb, spread, velocity, divergence, social, crossDomain, sports, marchMadness] = await Promise.allSettled([
+  const [arb, spread, velocity, divergence, social, crossDomain, sports, baseball] = await Promise.allSettled([
     scanArbitrage(markets),
     scanSpread(markets),
     scanVelocity(markets),
@@ -27,18 +27,18 @@ export async function runAllScanners(markets: PolymarketMarket[]): Promise<ScanR
     scanSocial(markets),
     scanCrossDomain(markets),
     scanSports(markets),
-    scanMarchMadness(markets),
+    scanBaseball(markets),
   ]);
 
   const byStrategy: Record<ScannerType, RankedSignal[]> = {
-    ARB:           arb.status           === 'fulfilled' ? arb.value           : [],
-    SPREAD:        spread.status        === 'fulfilled' ? spread.value        : [],
-    VELOCITY:      velocity.status      === 'fulfilled' ? velocity.value      : [],
-    DIVERGENCE:    divergence.status    === 'fulfilled' ? divergence.value    : [],
-    SOCIAL:        social.status        === 'fulfilled' ? social.value        : [],
-    CROSS_DOMAIN:  crossDomain.status   === 'fulfilled' ? crossDomain.value   : [],
-    SPORTS:        sports.status        === 'fulfilled' ? sports.value        : [],
-    MARCH_MADNESS: marchMadness.status  === 'fulfilled' ? marchMadness.value  : [],
+    ARB:          arb.status          === 'fulfilled' ? arb.value          : [],
+    SPREAD:       spread.status       === 'fulfilled' ? spread.value       : [],
+    VELOCITY:     velocity.status     === 'fulfilled' ? velocity.value     : [],
+    DIVERGENCE:   divergence.status   === 'fulfilled' ? divergence.value   : [],
+    SOCIAL:       social.status       === 'fulfilled' ? social.value       : [],
+    CROSS_DOMAIN: crossDomain.status  === 'fulfilled' ? crossDomain.value  : [],
+    SPORTS:       sports.status       === 'fulfilled' ? sports.value       : [],
+    BASEBALL:     baseball.status     === 'fulfilled' ? baseball.value     : [],
   };
 
   // Combine and rank all signals
@@ -66,7 +66,7 @@ export async function runScanner(
     case 'SOCIAL':        return scanSocial(markets);
     case 'CROSS_DOMAIN':  return scanCrossDomain(markets);
     case 'SPORTS':        return scanSports(markets);
-    case 'MARCH_MADNESS': return scanMarchMadness(markets);
+    case 'BASEBALL':      return scanBaseball(markets);
   }
 }
 

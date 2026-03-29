@@ -5,7 +5,7 @@ import Tooltip from '@/components/shared/Tooltip';
 const SCANNER_COLORS: Record<ScannerType, string> = {
   ARB: '#22c55e', SPREAD: '#06b6d4', VELOCITY: '#eab308',
   DIVERGENCE: '#ec4899', SOCIAL: '#a78bfa', CROSS_DOMAIN: '#f97316',
-  SPORTS: '#38bdf8', MARCH_MADNESS: '#fb923c',
+  SPORTS: '#38bdf8', BASEBALL: '#fb923c',
 };
 
 const SCANNER_DESCRIPTIONS: Record<ScannerType, string> = {
@@ -16,7 +16,7 @@ const SCANNER_DESCRIPTIONS: Record<ScannerType, string> = {
   SOCIAL: 'News/Reddit sentiment gap — social signal vs market price divergence',
   CROSS_DOMAIN: 'Finance↔Polymarket — stock/crypto moves not priced into linked markets',
   SPORTS: 'Player injury modeling + recent form → win probability vs market price',
-  MARCH_MADNESS: '40yr seed win rates + KenPom efficiency + injury impact — tournament-specific fine-tuning',
+  BASEBALL: 'Pythagorean expectation + pitcher matchup + OPS + bullpen + lineup-adjusted probability',
 };
 
 export default function StrategyCard({

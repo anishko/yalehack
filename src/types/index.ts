@@ -51,7 +51,7 @@ export interface Orderbook {
 
 // ─── Alpha / Signals ──────────────────────────────────────────────────────────
 
-export type ScannerType = 'ARB' | 'SPREAD' | 'VELOCITY' | 'DIVERGENCE' | 'SOCIAL' | 'CROSS_DOMAIN' | 'SPORTS' | 'MARCH_MADNESS';
+export type ScannerType = 'ARB' | 'SPREAD' | 'VELOCITY' | 'DIVERGENCE' | 'SOCIAL' | 'CROSS_DOMAIN' | 'SPORTS' | 'BASEBALL';
 
 // ─── Sports fine-tuning layer ─────────────────────────────────────────────────
 
@@ -111,7 +111,7 @@ export interface RankedSignal {
   marketPrice?: number;         // live YES price at signal time
   relatedAsset?: string;       // for CROSS_DOMAIN
   intelBoost?: number;         // from verified intel sources
-  sportsContext?: SportsContext;      // for SPORTS / MARCH_MADNESS
+  sportsContext?: SportsContext;      // for SPORTS / BASEBALL
   sportsExplanation?: SportsExplanation; // transparent probability breakdown
 }
 

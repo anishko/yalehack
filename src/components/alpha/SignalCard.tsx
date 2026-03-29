@@ -9,13 +9,13 @@ import Tooltip from '@/components/shared/Tooltip';
 const SCANNER_COLORS: Record<string, string> = {
   ARB: '#22c55e', SPREAD: '#06b6d4', VELOCITY: '#eab308',
   DIVERGENCE: '#ec4899', SOCIAL: '#a78bfa', CROSS_DOMAIN: '#f97316',
-  SPORTS: '#38bdf8', MARCH_MADNESS: '#fb923c',
+  SPORTS: '#38bdf8', BASEBALL: '#fb923c',
 };
 
 const SCANNER_LABELS: Record<string, string> = {
   ARB: 'Arbitrage', SPREAD: 'Spread', VELOCITY: 'Momentum',
   DIVERGENCE: 'Divergence', SOCIAL: 'Social', CROSS_DOMAIN: 'Cross-Domain',
-  SPORTS: '🏀 Sports', MARCH_MADNESS: '🏆 March Madness',
+  SPORTS: '🏀 Sports', BASEBALL: '⚾ Baseball',
 };
 
 // Z-score from confidence level using normal approximation (continuous, not a lookup).
