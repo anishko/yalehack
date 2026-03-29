@@ -1,4 +1,6 @@
 import type { PolymarketMarket, RankedSignal, PlayerStatus, SportsContext, SportsExplanation } from '@/types';
+import { fetchSportsMarkets } from '@/lib/polymarket/gamma';
+import { enrichMarkets } from '@/lib/polymarket/enricher';
 import { nanoid } from '../utils';
 
 // ─── MLB Seasonal Edge Engine ───────────────────────────────────────────────
@@ -386,10 +388,32 @@ function buildSignalFromMatchup(
 // ─── Main scanner ─────────────────────────────────────────────────────────────
 export async function scanBaseball(markets: PolymarketMarket[]): Promise<RankedSignal[]> {
   const signals: RankedSignal[] = [];
-  const baseballMarkets = markets.filter(m => m.active && !m.closed && isBaseballMarket(m.question));
+
+  // Fetch MLB-tagged markets directly from Polymarket (tag_id=100381)
+  // This catches markets the generic fetch misses (World Series, MVP, Cy Young, game lines)
+  let mlbMarkets: PolymarketMarket[] = [];
+  try {
+    const gammaMLB = await fetchSportsMarkets('mlb', 100);
+    mlbMarkets = await enrichMarkets(gammaMLB);
+  } catch (err) {
+    console.error('[baseball] Failed to fetch MLB markets:', err);
+  }
+
+  // Also check markets already passed in (from the generic scan)
+  const fromGeneric = markets.filter(m => m.active && !m.closed && isBaseballMarket(m.question));
+
+  // Deduplicate by conditionId
+  const seen = new Set<string>();
+  const allBaseball: PolymarketMarket[] = [];
+  for (const m of [...mlbMarkets, ...fromGeneric]) {
+    if (!seen.has(m.conditionId)) {
+      seen.add(m.conditionId);
+      allBaseball.push(m);
+    }
+  }
 
   // Process live Polymarket MLB markets
-  for (const market of baseballMarkets) {
+  for (const market of allBaseball) {
     const mid = market.midPrice ?? 0.5;
     const rng = seededRng(market.conditionId.split('').reduce((a, c) => a + c.charCodeAt(0), 0));
 

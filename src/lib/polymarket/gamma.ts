@@ -39,6 +39,23 @@ export async function fetchActiveMarkets(limit = 100, offset = 0): Promise<Gamma
   }
 }
 
+// Polymarket tags sports markets with specific tag IDs.
+// This fetches markets for a specific sport category.
+const SPORT_TAG_IDS: Record<string, string> = {
+  mlb: '100381',
+  nhl: '100382',
+};
+
+export async function fetchSportsMarkets(sport: string, limit = 100): Promise<GammaMarket[]> {
+  const tagId = SPORT_TAG_IDS[sport.toLowerCase()];
+  if (!tagId) return [];
+  try {
+    return await gammaFetch<GammaMarket[]>(`/markets?active=true&closed=false&limit=${limit}&tag_id=${tagId}`);
+  } catch {
+    return [];
+  }
+}
+
 export async function searchMarkets(query: string, limit = 20): Promise<GammaMarket[]> {
   try {
     return await gammaFetch<GammaMarket[]>(`/markets?_q=${encodeURIComponent(query)}&active=true&limit=${limit}`);
