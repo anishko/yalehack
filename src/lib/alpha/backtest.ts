@@ -290,12 +290,10 @@ async function fetchHistoricalTrades(
           const outcome = resolveOutcome(market, signal);
           if (!outcome) continue;
 
-          const pnl = outcome.won
-            ? positionSize * (outcome.exitPrice - signal.entryPrice)
-            : positionSize * (0 - signal.entryPrice) * (signal.direction === 'YES' ? 1 : -1);
-          const returnPct = outcome.won
-            ? ((outcome.exitPrice - signal.entryPrice) / signal.entryPrice) * 100
-            : ((0 - signal.entryPrice) / signal.entryPrice) * 100 * (signal.direction === 'YES' ? 1 : -1);
+          const costBasis = signal.direction === 'YES' ? signal.entryPrice : (1 - signal.entryPrice);
+          const shares = positionSize / costBasis;
+          const pnl = outcome.won ? shares * 1.0 - positionSize : -positionSize;
+          const returnPct = outcome.won ? ((1.0 - costBasis) / costBasis) * 100 : -100;
 
           const entryTimestamp = entryPrices[entryPrices.length - 1]?.t
             ? entryPrices[entryPrices.length - 1].t * 1000 // convert seconds to ms if needed
