@@ -66,7 +66,7 @@ export async function aggregateTopicSignal(topic: string): Promise<AggregatedSig
     } else {
       sentiment = 'neutral';
       finbertLabel = 'neutral';
-      finbertScore = 1 - Math.abs(avgDirection); // high score = confidently neutral
+      finbertScore = Math.max(0.05, Math.abs(avgDirection)); // low score = no directional conviction
     }
   }
 

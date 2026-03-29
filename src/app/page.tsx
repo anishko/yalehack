@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import IntelSidebar from '@/components/layout/IntelSidebar';
 import SignalTicker from '@/components/layout/SignalTicker';
-import StrategyDashboard from '@/components/strategy/StrategyDashboard';
+// import StrategyDashboard from '@/components/strategy/StrategyDashboard'; // hidden from UI
 import SignalCard from '@/components/alpha/SignalCard';
 import BacktestPanel from '@/components/alpha/BacktestPanel';
 import MarketCard from '@/components/market/MarketCard';
@@ -133,7 +133,8 @@ export default function HomePage() {
       <div style={{ display: 'flex', flex: 1 }}>
         {/* Main content */}
         <main style={{ flex: 1, overflowY: 'auto', padding: 20, minWidth: 0 }}>
-          <StrategyDashboard signals={signals} />
+          {/* Strategy Engine hidden from UI — keeping code intact for future use */}
+          {/* <StrategyDashboard signals={signals} /> */}
 
           {/* Tab bar */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 0, flexWrap: 'wrap' }}>

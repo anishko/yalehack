@@ -58,16 +58,28 @@ export async function scanSocial(markets: PolymarketMarket[]): Promise<RankedSig
     const marketBullish = mid > 0.5;
     const hasGap = socialBullish !== marketBullish;
 
-    // FinBERT confidence boost: high FinBERT scores raise our base confidence
-    const finbertBoost = Math.round(signal.finbertScore * 15); // 0-15 pts
-    const baseConfidence = 35 + Math.min(30, signal.articleCount * 5) + Math.min(15, signal.redditScore / 100) + finbertBoost;
-    const gapBonus = hasGap ? 10 : 0;
-    const confidence = Math.round(Math.min(85, baseConfidence + gapBonus));
+    // FinBERT confidence: only boost meaningfully if we have directional signal
+    const finbertBoost = signal.sentiment !== 'neutral'
+      ? Math.round(signal.finbertScore * 20) // 0-20 pts when directional
+      : Math.round(signal.finbertScore * 5);  // 0-5 pts when neutral (low boost)
+
+    // Article count with diminishing returns (not linear cap)
+    const articleBoost = Math.round(Math.log1p(signal.articleCount) * 10); // ~23 for 10, ~7 for 1
+
+    // Reddit engagement — log scale for granularity across wide range
+    const redditBoost = Math.min(15, Math.round(Math.log1p(signal.redditScore) * 1.5));
+
+    // Market price distance from 0.5 — further = more market conviction to disagree with
+    const priceConviction = Math.round(Math.abs(mid - 0.5) * 30); // 0-15 pts
+
+    const baseConfidence = 30 + articleBoost + redditBoost + priceConviction + finbertBoost;
+    const gapBonus = hasGap ? 8 : 0;
+    const confidence = Math.round(Math.min(92, baseConfidence + gapBonus));
 
     const direction = signal.sentiment === 'bullish' ? 'YES' : 'NO';
     // Scale edge by FinBERT confidence — higher conviction = larger expected edge
     const finbertEdgeMultiplier = 0.8 + signal.finbertScore * 0.4; // 0.8x to 1.2x
-    const expectedEdge = ((hasGap ? 0.05 : 0.02) + Math.min(0.08, velocity * 0.01)) * finbertEdgeMultiplier;
+    const expectedEdge = ((hasGap ? 0.04 : 0.015) + Math.min(0.06, velocity * 0.008) + Math.abs(mid - 0.5) * 0.05) * finbertEdgeMultiplier;
 
     signals.push({
       id: nanoid(),
@@ -78,7 +90,7 @@ export async function scanSocial(markets: PolymarketMarket[]): Promise<RankedSig
       confidence,
       expectedEdge: Math.round(expectedEdge * 10000) / 10000,
       riskScore: Math.max(10, 65 - signal.articleCount * 3 - finbertBoost),
-      edgeScore: Math.round(Math.min(3.0, (confidence / 100) * 1.5 * finbertEdgeMultiplier + (hasGap ? 0.4 : 0)) * 100) / 100,
+      edgeScore: Math.round(Math.min(3.0, (confidence / 100) * (1 + Math.abs(mid - 0.5)) * finbertEdgeMultiplier + (hasGap ? 0.3 : 0) + Math.log1p(velocity) * 0.2) * 100) / 100,
       summary: `${signal.articleCount} articles, Reddit score ${signal.redditScore} — FinBERT: ${signal.finbertLabel} (${(signal.finbertScore * 100).toFixed(0)}%)${hasGap ? ' vs market price' : ''}`,
       details: `Topic: "${topic}" | FinBERT sentiment: ${signal.finbertLabel} (score: ${signal.finbertScore.toFixed(3)}) | Headlines: ${signal.headlines.slice(0, 2).join('; ')} | Sources: ${signal.sources.join(', ')}`,
       timestamp: Date.now(),
