@@ -8,6 +8,7 @@
 
 **[Watch the demo on YouTube](https://youtu.be/l2AGKneifeQ)**
 
+(the demo got glitched out due to my laptop screen recording software which only kept the audio mainly intact)
 ---
 
 ## What is Lineup?
