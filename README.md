@@ -5,7 +5,7 @@
 
 ## What it does
 
-PolyEdge is a full-stack trading intelligence platform built on top of [Polymarket](https://polymarket.com). It scans live prediction markets, identifies mispriced opportunities using quantitative models, and helps you size and manage bets with institutional-grade risk metrics.
+Lineup  is a full-stack trading intelligence platform built on top of [Polymarket](https://polymarket.com). It scans live prediction markets, identifies mispriced opportunities using quantitative models, and helps you size and manage bets with institutional-grade risk metrics.
 
 ### 8 Strategy Scanners
 | Scanner | Edge Source |
