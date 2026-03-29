@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { factCheck } from '@/lib/verify/fact-checker';
 import { applyIntelToPositions } from '@/lib/portfolio/manager';
+import { saveIntelEntry } from '@/lib/mongodb/intel';
 
 export async function POST(req: NextRequest) {
   try {
@@ -8,6 +9,11 @@ export async function POST(req: NextRequest) {
     if (!raw?.trim()) return NextResponse.json({ error: 'Empty input' }, { status: 400 });
 
     const result = await factCheck(raw, marketQuestion);
+
+    // Persist intel entry to MongoDB
+    await saveIntelEntry(result).catch(err =>
+      console.error('[verify] failed to persist intel:', err)
+    );
 
     // Auto-apply risk delta to any matching open positions
     const impact = await applyIntelToPositions(result.claim, result.riskDelta).catch(() => ({ updated: 0, positions: [] }));

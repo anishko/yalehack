@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fetchActiveMarkets } from '@/lib/polymarket/gamma';
 import { enrichMarkets } from '@/lib/polymarket/enricher';
 import { runAllScanners, runScanner } from '@/lib/alpha/engine';
+import { saveSignals } from '@/lib/mongodb/signals';
 import type { ScannerType } from '@/types';
 
 export const runtime = 'nodejs';
@@ -23,6 +24,12 @@ export async function POST(req: NextRequest) {
     } else {
       result = await runAllScanners(markets);
     }
+
+    // Persist signals to MongoDB
+    const allSignals = result.signals ?? [];
+    await saveSignals(allSignals).catch(err =>
+      console.error('[scan] failed to persist signals:', err)
+    );
 
     return NextResponse.json(result);
   } catch (err) {

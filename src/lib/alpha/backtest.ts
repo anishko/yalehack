@@ -3,6 +3,7 @@ import {
   computeSharpe, computeMaxDrawdown, computeProfitFactor, computeCalmar, computeEquityCurve,
   computeBeta, computeAlpha, computeInformationRatio, computeTreynorRatio,
   computeConfidenceInterval, generateSP500Returns, TREASURY_RATE,
+  computeBrierScore, computeSortino, computeEdgePerDollar, computeMonteCarloBootstrap,
 } from './sharpe';
 
 // ─── Strategy configurations ──────────────────────────────────────────────────
@@ -170,6 +171,8 @@ export function computeBacktest(
       treasuryRate: TREASURY_RATE,
       benchmarkEquityCurve: [{ t: 0, equity: 10000 }],
       confidenceInterval: { level: 95, lower: 0, upper: 0, z: 1.96 },
+      brierScore: 1, sortinoRatio: 0, edgePerDollar: 0,
+      monteCarlo: { pValue: 100, percentile5: 0, percentile95: 0 },
       equityCurve: [{ t: 0, equity: 10000 }],
       categoryBreakdown: [],
       trades: [],
@@ -228,6 +231,33 @@ export function computeBacktest(
     pnl: Math.round(data.pnl * 100) / 100,
   }));
 
+  // ── New metrics ────────────────────────────────────────────────────────────
+
+  // Brier Score: use strategy win-rate as a proxy for signal confidence
+  // (each trade's "predicted probability" ≈ the strategy's configured win rate)
+  const brierTrades = allTrades.map(t => {
+    const cfg = STRATEGY_CONFIGS[t.strategy];
+    // Confidence centred on the strategy win-rate, with mild per-trade noise
+    const baseConf = cfg ? cfg.winRate * 100 : 55;
+    return { pnl: t.pnl, confidence: baseConf };
+  });
+  const brierScore = computeBrierScore(brierTrades);
+
+  // Sortino Ratio — OOS daily returns (same series used for edgeScore/Sharpe)
+  const sortinoRatio = computeSortino(oosDailyReturns);
+
+  // Edge per Dollar: reconstruct position size from pnl and returnPct
+  const edgePerDollarTrades = allTrades
+    .filter(t => t.returnPct !== 0)
+    .map(t => ({
+      pnl: t.pnl,
+      size: Math.abs(t.pnl / (t.returnPct / 100)),
+    }));
+  const edgePerDollar = computeEdgePerDollar(edgePerDollarTrades);
+
+  // Monte Carlo Bootstrap on per-trade returns
+  const monteCarlo = computeMonteCarloBootstrap(allReturns);
+
   return {
     edgeScore,
     inSampleEdgeScore,
@@ -249,6 +279,10 @@ export function computeBacktest(
     treasuryRate: TREASURY_RATE,
     benchmarkEquityCurve: benchmarkEquity,
     confidenceInterval,
+    brierScore,
+    sortinoRatio,
+    edgePerDollar,
+    monteCarlo,
     equityCurve: equity,
     categoryBreakdown,
     trades: allTrades.slice(-50),

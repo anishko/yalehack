@@ -201,6 +201,22 @@ export default function BacktestPanel() {
             ))}
           </div>
 
+          {/* Prediction-market-native metrics */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 12 }}>
+            {[
+              { label: 'Brier Score', value: result.brierScore?.toFixed(3) ?? '—', color: (result.brierScore ?? 1) < 0.25 ? 'var(--green)' : (result.brierScore ?? 1) < 0.35 ? 'var(--gold)' : 'var(--red)', tip: 'Calibration accuracy. Lower = better. <0.25 = well-calibrated, >0.35 = poor' },
+              { label: 'Sortino Ratio', value: result.sortinoRatio?.toFixed(2) ?? '—', color: 'var(--cyan)', tip: 'Like Sharpe but only penalizes downside volatility. Higher = better.' },
+              { label: 'Edge/Dollar', value: `$${result.edgePerDollar?.toFixed(4) ?? '0'}`, color: (result.edgePerDollar ?? 0) >= 0.03 ? 'var(--green)' : 'var(--gold)', tip: 'Average return per dollar risked. Casinos run $0.02-0.05. We target $0.03+.' },
+              { label: 'MC p-value', value: `${result.monteCarlo?.pValue ?? 0}%`, color: (result.monteCarlo?.pValue ?? 0) >= 90 ? 'var(--green)' : (result.monteCarlo?.pValue ?? 0) >= 70 ? 'var(--gold)' : 'var(--red)', tip: 'Monte Carlo: % of 10K reshuffled orderings that are still profitable. >90% = not luck.' },
+              { label: 'MC 5th–95th', value: `${result.monteCarlo?.percentile5?.toFixed(1) ?? 0}% / ${result.monteCarlo?.percentile95?.toFixed(1) ?? 0}%`, color: 'var(--text-secondary)', tip: '5th and 95th percentile total returns across 10K bootstraps. Shows tail risk.' },
+            ].map(s => (
+              <div key={s.label} title={s.tip} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px', cursor: 'help' }}>
+                <div data-mono style={{ fontSize: 14, fontWeight: 700, color: s.color }}>{s.value}</div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+
           {/* Alpha / benchmark stats grid */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 16 }}>
             {[

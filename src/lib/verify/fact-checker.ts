@@ -1,5 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { searchGoogleNews } from '@/lib/scraper/google-news';
+import { getEmbedding } from '@/lib/embeddings';
+import { vectorSearchMarkets } from '@/lib/mongodb/markets';
 import type { IntelEntry, ReliabilityTier } from '@/types';
 import { nanoid } from '@/lib/alpha/utils';
 
@@ -61,6 +63,16 @@ export async function factCheck(raw: string, relatedMarketQuestion?: string): Pr
 
   const { reliability, tier } = computeReliability(sourceCount, type);
 
+  // ── Vector search: find related Polymarket contracts ────────────────────────
+  let relatedMarkets: string[] = [];
+  try {
+    const claimEmbedding = await getEmbedding(claimText);
+    const matchedMarkets = await vectorSearchMarkets(claimEmbedding, 5);
+    relatedMarkets = matchedMarkets.map(m => m.question);
+  } catch (err) {
+    console.error('[factCheck] vector search for related markets failed:', err);
+  }
+
   // ── Claude analysis — now also classifies market direction ────────────────
   let aiAnalysis = '';
   let direction: 'CONFIRMS' | 'CONTRADICTS' | 'NEUTRAL' = 'NEUTRAL';
@@ -76,6 +88,7 @@ export async function factCheck(raw: string, relatedMarketQuestion?: string): Pr
 
 Claim: "${claimText}"
 ${relatedMarketQuestion ? `Related market: "${relatedMarketQuestion}"` : ''}
+${relatedMarkets.length ? `Matching Polymarket contracts:\n${relatedMarkets.slice(0, 3).map(q => `- ${q}`).join('\n')}` : ''}
 ${context ? `Corroborating news:\n${context}` : 'No corroborating news found.'}
 
 Respond in this exact format (2 lines):
@@ -106,7 +119,7 @@ ANALYSIS: <1-2 sentence analysis of reliability and market impact>`,
     tier,
     sources: sourceCount,
     riskDelta,
-    relatedMarkets: [],
+    relatedMarkets,
     timestamp: Date.now(),
     aiAnalysis,
   };

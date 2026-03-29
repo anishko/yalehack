@@ -137,6 +137,12 @@ export interface BacktestTrade {
   strategy: ScannerType;
 }
 
+export interface MonteCarloResult {
+  pValue: number;          // % of shuffles that are still profitable
+  percentile5: number;     // 5th percentile total return
+  percentile95: number;    // 95th percentile total return
+}
+
 export interface ConfidenceInterval {
   level: number;        // e.g. 95
   lower: number;        // lower bound return
@@ -166,6 +172,11 @@ export interface BacktestResult {
   avgWin: number;
   avgLoss: number;
   totalReturn: number;
+  // New metrics
+  brierScore: number;                // calibration accuracy (lower = better)
+  sortinoRatio: number;              // Sharpe but only penalises downside vol
+  edgePerDollar: number;             // average return per dollar risked
+  monteCarlo: MonteCarloResult;      // bootstrap p-value and percentile bounds
   equityCurve: Array<{ t: number; equity: number }>;
   categoryBreakdown: Array<{ category: string; trades: number; winRate: number; pnl: number }>;
   trades: BacktestTrade[];
@@ -233,6 +244,21 @@ export interface PortfolioStats {
   winRate: number;
   positions: Position[];
   equityCurve: Array<{ t: number; equity: number }>;
+}
+
+// ─── Portfolio Monte Carlo ────────────────────────────────────────────────
+
+export interface PortfolioMonteCarloResult {
+  percentiles: {
+    p5: number;
+    p25: number;
+    p50: number;
+    p75: number;
+    p95: number;
+  };
+  profitProbability: number;   // % of simulations that ended profitable
+  expectedValue: number;       // mean final return as %
+  paths: number[][];           // sample of ~100 equity paths for charting
 }
 
 // ─── Finance ──────────────────────────────────────────────────────────────────

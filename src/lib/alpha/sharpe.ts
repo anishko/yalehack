@@ -162,6 +162,113 @@ export function generateSP500Returns(days: number, seed = 99): number[] {
   return Array.from({ length: days }, () => dailyMean + dailyStd * randn());
 }
 
+// ─── Brier Score ──────────────────────────────────────────────────────────────
+
+/** Brier Score: (1/N) * sum((predicted_prob - actual_outcome)^2)
+ *  Lower = better calibration. Uses signal confidence as predicted_prob
+ *  and win (1) / loss (0) as actual_outcome. */
+export function computeBrierScore(
+  trades: Array<{ pnl: number; confidence: number }>,
+): number {
+  if (trades.length === 0) return 1;
+  const sum = trades.reduce((s, t) => {
+    const predicted = t.confidence / 100; // confidence is 0-100, normalise to 0-1
+    const actual = t.pnl > 0 ? 1 : 0;
+    return s + (predicted - actual) ** 2;
+  }, 0);
+  return Math.round((sum / trades.length) * 10000) / 10000;
+}
+
+// ─── Sortino Ratio ────────────────────────────────────────────────────────────
+
+/** Sortino Ratio = (mean_return - rf) / downside_std * sqrt(365)
+ *  Only penalises downside volatility (returns below the mean). */
+export function computeSortino(returns: number[], riskFreeRate = TREASURY_RATE): number {
+  if (returns.length < 2) return 0;
+  const mean = returns.reduce((s, r) => s + r, 0) / returns.length;
+  const dailyRf = riskFreeRate / 365;
+
+  // Downside deviation: std of returns below the mean
+  const downsideReturns = returns.filter(r => r < mean);
+  if (downsideReturns.length === 0) return mean > 0 ? 5.0 : 0;
+
+  const downsideVariance = downsideReturns.reduce((s, r) => s + (r - mean) ** 2, 0) / downsideReturns.length;
+  const downsideStd = Math.sqrt(downsideVariance);
+  if (downsideStd === 0) return mean > 0 ? 5.0 : 0;
+
+  return Math.round(((mean - dailyRf) / downsideStd) * Math.sqrt(365) * 100) / 100;
+}
+
+// ─── Edge per Dollar ──────────────────────────────────────────────────────────
+
+/** Edge per Dollar = sum(pnl) / sum(position_sizes).
+ *  Average return per dollar risked across all trades. */
+export function computeEdgePerDollar(
+  trades: Array<{ pnl: number; size: number }>,
+): number {
+  if (trades.length === 0) return 0;
+  const totalPnl = trades.reduce((s, t) => s + t.pnl, 0);
+  const totalSize = trades.reduce((s, t) => s + t.size, 0);
+  if (totalSize === 0) return 0;
+  return Math.round((totalPnl / totalSize) * 10000) / 10000;
+}
+
+// ─── Monte Carlo Bootstrap ────────────────────────────────────────────────────
+
+export interface MonteCarloResult {
+  pValue: number;          // % of shuffles that are still profitable
+  percentile5: number;     // 5th percentile total return
+  percentile95: number;    // 95th percentile total return
+}
+
+/** Reshuffle trade returns 10,000 times. Report p-value and 5th/95th percentile. */
+export function computeMonteCarloBootstrap(
+  tradeReturns: number[],
+  iterations = 10000,
+  seed = 42,
+): MonteCarloResult {
+  if (tradeReturns.length === 0) {
+    return { pValue: 1, percentile5: 0, percentile95: 0 };
+  }
+
+  let s = seed;
+  const rng = () => {
+    s = (s * 1664525 + 1013904223) & 0xffffffff;
+    return (s >>> 0) / 0xffffffff;
+  };
+
+  const n = tradeReturns.length;
+  const totals: number[] = [];
+
+  for (let iter = 0; iter < iterations; iter++) {
+    // Fisher-Yates shuffle on a copy
+    const shuffled = tradeReturns.slice();
+    for (let i = n - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    // Compound total return
+    let equity = 1;
+    for (const r of shuffled) {
+      equity *= (1 + r);
+    }
+    totals.push(equity - 1);
+  }
+
+  totals.sort((a, b) => a - b);
+
+  const profitable = totals.filter(t => t > 0).length;
+  const pValue = Math.round((profitable / iterations) * 10000) / 100;
+  const p5idx  = Math.floor(iterations * 0.05);
+  const p95idx = Math.floor(iterations * 0.95);
+
+  return {
+    pValue,
+    percentile5:  Math.round(totals[p5idx] * 10000) / 100,
+    percentile95: Math.round(totals[p95idx] * 10000) / 100,
+  };
+}
+
 // ─── Labels / colours ──────────────────────────────────────────────────────────
 
 export function edgeScoreLabel(score: number): string {

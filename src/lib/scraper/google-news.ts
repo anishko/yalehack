@@ -1,4 +1,6 @@
 import RSSParser from 'rss-parser';
+import { getEmbedding } from '@/lib/embeddings';
+import { isDuplicate, saveArticle } from '@/lib/mongodb/articles';
 
 const parser = new RSSParser();
 
@@ -17,13 +19,30 @@ export async function searchGoogleNews(query: string): Promise<NewsArticle[]> {
       parser.parseURL(url),
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
     ]);
-    return ((feed as RSSParser.Output<{}>).items || []).slice(0, 10).map(item => ({
+    const raw = ((feed as RSSParser.Output<{}>).items || []).slice(0, 10).map(item => ({
       title: item.title || '',
       link: item.link || '',
       pubDate: item.pubDate,
       content: item.contentSnippet || item.content || '',
       source: 'Google News',
     }));
+
+    // Dedup: embed each article title and check against stored articles
+    const deduped: NewsArticle[] = [];
+    for (const article of raw) {
+      try {
+        const embedding = await getEmbedding(article.title);
+        const dup = await isDuplicate(embedding);
+        if (!dup) {
+          deduped.push(article);
+          await saveArticle(article.title, article.source || 'Google News', embedding);
+        }
+      } catch {
+        // If embedding/dedup fails, include the article anyway
+        deduped.push(article);
+      }
+    }
+    return deduped;
   } catch {
     return [];
   }

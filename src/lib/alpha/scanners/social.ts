@@ -52,17 +52,22 @@ export async function scanSocial(markets: PolymarketMarket[]): Promise<RankedSig
     const mid = market.midPrice ?? 0.5;
     const velocity = signal.velocity;
 
-    // Gap: social sentiment != market price direction
+    // FinBERT-powered sentiment gap detection
+    // Use FinBERT score to weight confidence — higher score = more conviction
     const socialBullish = signal.sentiment === 'bullish';
     const marketBullish = mid > 0.5;
     const hasGap = socialBullish !== marketBullish;
 
-    const baseConfidence = 35 + Math.min(30, signal.articleCount * 5) + Math.min(15, signal.redditScore / 100);
+    // FinBERT confidence boost: high FinBERT scores raise our base confidence
+    const finbertBoost = Math.round(signal.finbertScore * 15); // 0-15 pts
+    const baseConfidence = 35 + Math.min(30, signal.articleCount * 5) + Math.min(15, signal.redditScore / 100) + finbertBoost;
     const gapBonus = hasGap ? 10 : 0;
-    const confidence = Math.round(Math.min(80, baseConfidence + gapBonus));
+    const confidence = Math.round(Math.min(85, baseConfidence + gapBonus));
 
     const direction = signal.sentiment === 'bullish' ? 'YES' : 'NO';
-    const expectedEdge = (hasGap ? 0.05 : 0.02) + Math.min(0.08, velocity * 0.01);
+    // Scale edge by FinBERT confidence — higher conviction = larger expected edge
+    const finbertEdgeMultiplier = 0.8 + signal.finbertScore * 0.4; // 0.8x to 1.2x
+    const expectedEdge = ((hasGap ? 0.05 : 0.02) + Math.min(0.08, velocity * 0.01)) * finbertEdgeMultiplier;
 
     signals.push({
       id: nanoid(),
@@ -71,11 +76,11 @@ export async function scanSocial(markets: PolymarketMarket[]): Promise<RankedSig
       marketQuestion: market.question,
       direction,
       confidence,
-      expectedEdge,
-      riskScore: 65 - signal.articleCount * 3,
-      edgeScore: Math.min(1.5, (confidence / 100) * 2),
-      summary: `${signal.articleCount} articles, Reddit score ${signal.redditScore} — sentiment ${signal.sentiment}${hasGap ? ' vs market price' : ''}`,
-      details: `Topic: "${topic}" | Headlines: ${signal.headlines.slice(0, 2).join('; ')} | Sources: ${signal.sources.join(', ')}`,
+      expectedEdge: Math.round(expectedEdge * 10000) / 10000,
+      riskScore: Math.max(10, 65 - signal.articleCount * 3 - finbertBoost),
+      edgeScore: Math.min(2.0, (confidence / 100) * 2 * finbertEdgeMultiplier),
+      summary: `${signal.articleCount} articles, Reddit score ${signal.redditScore} — FinBERT: ${signal.finbertLabel} (${(signal.finbertScore * 100).toFixed(0)}%)${hasGap ? ' vs market price' : ''}`,
+      details: `Topic: "${topic}" | FinBERT sentiment: ${signal.finbertLabel} (score: ${signal.finbertScore.toFixed(3)}) | Headlines: ${signal.headlines.slice(0, 2).join('; ')} | Sources: ${signal.sources.join(', ')}`,
       timestamp: Date.now(),
       category: market.category,
     });

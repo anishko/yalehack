@@ -18,13 +18,23 @@ const SCANNER_LABELS: Record<string, string> = {
   SPORTS: '🏀 Sports', MARCH_MADNESS: '🏆 March Madness',
 };
 
-const Z_SCORES: Record<number, number> = { 80: 1.282, 90: 1.645, 95: 1.960, 99: 2.576 };
+// Z-score from confidence level using normal approximation (continuous, not a lookup).
+// This means every integer from 80–99 produces a distinct value on the slider.
+// Formula: inverse normal approximation (Beasley-Springer-Moro)
+function zFromLevel(level: number): number {
+  const p = level / 100; // e.g. 0.95
+  const q = (1 + p) / 2; // one-sided: 0.975 for 95%
+  // Rational approximation for inverse normal (accurate to ~4 decimal places)
+  const t = Math.sqrt(-2 * Math.log(1 - q));
+  const c = [2.515517, 0.802853, 0.010328];
+  const d = [1.432788, 0.189269, 0.001308];
+  return t - (c[0] + c[1] * t + c[2] * t * t) / (1 + d[0] * t + d[1] * t * t + d[2] * t * t * t);
+}
 
-// Compute CI bounds for expected edge given a confidence level
 function edgeCI(edge: number, confidence: number, ciLevel: number) {
-  const winProb = Math.max(0.01, Math.min(0.99, confidence / 100)); // clamp — confidence >100 causes sqrt(negative) = NaN
+  const winProb = Math.max(0.01, Math.min(0.99, confidence / 100));
   const stdDev = Math.sqrt(winProb * (1 - winProb));
-  const z = Z_SCORES[ciLevel] ?? 1.96;
+  const z = zFromLevel(Math.max(80, Math.min(99, ciLevel)));
   const margin = z * stdDev * edge;
   return {
     lower: Math.max(0, Math.round((edge - margin) * 1000) / 10),
@@ -162,9 +172,9 @@ export default function SignalCard({ signal, cash = 10000 }: { signal: RankedSig
       <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.04em' }}>
-            EDGE CI
+            PROFIT RANGE — {ciLevel}% CI
           </span>
-          <span style={{ fontSize: 10, color: 'var(--cyan)', fontWeight: 700 }}>{ciLevel}%</span>
+          <span style={{ fontSize: 10, color: 'var(--cyan)', fontWeight: 700 }}>z={zFromLevel(ciLevel).toFixed(2)}</span>
         </div>
         <input
           type="range"
@@ -173,10 +183,16 @@ export default function SignalCard({ signal, cash = 10000 }: { signal: RankedSig
           onChange={e => setCiLevel(Number(e.target.value))}
           style={{ width: '100%', accentColor: 'var(--cyan)', cursor: 'pointer', marginBottom: 6 }}
         />
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 11, color: 'var(--red)', fontWeight: 700 }}>+{ci.lower}%</span>
-          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>expected edge range</span>
-          <span style={{ fontSize: 11, color: 'var(--green)', fontWeight: 700 }}>+{ci.upper}%</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ textAlign: 'left' }}>
+            <div style={{ fontSize: 12, color: 'var(--red)', fontWeight: 800 }}>+{ci.lower}%</div>
+            <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>worst case</div>
+          </div>
+          <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>← expected profit range →</span>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 12, color: 'var(--green)', fontWeight: 800 }}>+{ci.upper}%</div>
+            <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>best case</div>
+          </div>
         </div>
       </div>
 

@@ -1,4 +1,5 @@
 import { getDb } from './client';
+import { getBatchEmbeddings } from '@/lib/embeddings';
 import type { StoredMarket } from '@/types';
 
 export async function upsertMarket(market: StoredMarket): Promise<void> {
@@ -15,6 +16,26 @@ export async function upsertMarkets(markets: StoredMarket[]): Promise<void> {
   if (!markets.length) return;
   const db = await getDb();
   const col = db.collection<StoredMarket>('markets');
+
+  // Auto-embed markets that don't have embeddings yet
+  const needsEmbedding = markets.filter(m => !m.embedding);
+  if (needsEmbedding.length > 0) {
+    const BATCH_SIZE = 20;
+    for (let i = 0; i < needsEmbedding.length; i += BATCH_SIZE) {
+      const batch = needsEmbedding.slice(i, i + BATCH_SIZE);
+      const texts = batch.map(m => m.question + (m.description ? ` ${m.description}` : ''));
+      try {
+        const embeddings = await getBatchEmbeddings(texts);
+        batch.forEach((m, idx) => {
+          m.embedding = embeddings[idx];
+        });
+      } catch (err) {
+        console.error(`[upsertMarkets] embedding batch ${i} failed:`, err);
+        // Continue without embeddings for this batch
+      }
+    }
+  }
+
   const ops = markets.map(m => ({
     updateOne: {
       filter: { conditionId: m.conditionId },
@@ -97,4 +118,28 @@ export async function ensureIndexes(): Promise<void> {
   await col.createIndex({ conditionId: 1 }, { unique: true });
   await col.createIndex({ active: 1, updatedAt: -1 });
   await col.createIndex({ category: 1 });
+}
+
+export async function ensureAllIndexes(): Promise<void> {
+  const db = await getDb();
+
+  // Markets collection — existing + TTL
+  const markets = db.collection('markets');
+  await markets.createIndex({ conditionId: 1 }, { unique: true });
+  await markets.createIndex({ active: 1, updatedAt: -1 });
+  await markets.createIndex({ category: 1 });
+  await markets.createIndex({ updatedAt: 1 }, { expireAfterSeconds: 86400 }); // 24h TTL
+
+  // Signals collection
+  const signals = db.collection('signals');
+  await signals.createIndex({ scannerType: 1, timestamp: -1 });
+
+  // Intel collection
+  const intel = db.collection('intel');
+  await intel.createIndex({ timestamp: -1 });
+
+  // Articles collection
+  const articles = db.collection('articles');
+  await articles.createIndex({ timestamp: -1 });
+  await articles.createIndex({ ingestedAt: 1 }, { expireAfterSeconds: 604800 }); // 7 days TTL
 }
