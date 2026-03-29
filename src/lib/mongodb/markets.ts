@@ -61,23 +61,25 @@ export async function vectorSearchMarkets(
 ): Promise<StoredMarket[]> {
   const db = await getDb();
   try {
-    return db.collection('markets').aggregate([
+    const results = await db.collection('markets').aggregate([
       {
         $vectorSearch: {
           index: 'vector_index',
           path: 'embedding',
           queryVector: embedding,
           numCandidates: limit * 10,
-          limit,
+          limit: limit * 2, // fetch extra so we can filter
+          filter: { active: true },
         },
       },
+      { $limit: limit },
     ]).toArray() as unknown as StoredMarket[];
+    if (results.length > 0) return results;
+    // If vector search returned nothing, don't return random markets — throw to trigger text fallback
+    throw new Error('vector search returned no results');
   } catch {
-    // Fallback: text search if vector index not available
-    return db.collection<StoredMarket>('markets')
-      .find({ active: true })
-      .limit(limit)
-      .toArray() as unknown as StoredMarket[];
+    // Don't return random markets — return empty so the caller falls through to text/Gamma search
+    return [];
   }
 }
 
@@ -95,6 +97,7 @@ export async function textSearchMarkets(query: string, limit = 20): Promise<Stor
           },
         },
       },
+      { $match: { active: true } },
       { $limit: limit },
     ]).toArray() as unknown as StoredMarket[];
   } catch {
@@ -110,6 +113,16 @@ export async function textSearchMarkets(query: string, limit = 20): Promise<Stor
       .limit(limit)
       .toArray() as unknown as StoredMarket[];
   }
+}
+
+// Remove markets that haven't been refreshed in 48h — they're likely closed/expired
+export async function cleanStaleMarkets(): Promise<number> {
+  const db = await getDb();
+  const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+  const result = await db.collection('markets').deleteMany({
+    updatedAt: { $lt: cutoff },
+  });
+  return result.deletedCount;
 }
 
 export async function ensureIndexes(): Promise<void> {

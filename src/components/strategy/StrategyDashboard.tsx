@@ -42,7 +42,7 @@ export default function StrategyDashboard({ signals }: { signals: RankedSignal[]
         </div>
         {blend && (
           <div style={{ textAlign: 'right' }}>
-            <EdgeScoreGauge score={blend.blendedEdgeScore} size="lg" label="BLENDED EDGE SCORE" />
+            <EdgeScoreGauge score={blend.blendedEdgeScore} size="lg" label="BLENDED SHARPE" />
           </div>
         )}
       </div>

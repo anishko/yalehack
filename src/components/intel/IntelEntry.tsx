@@ -47,16 +47,21 @@ export default function IntelEntryCard({ entry }: { entry: IntelEntry }) {
       )}
 
       {/* Matched Polymarket contracts via vector search */}
-      {entry.relatedMarkets.length > 0 && (expanded || entry.relatedMarkets.length <= 2) && (
+      {entry.relatedMarkets.length > 0 && (
         <div style={{ marginBottom: 6 }}>
           <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--cyan)', letterSpacing: '0.05em', marginBottom: 4 }}>
-            MATCHED CONTRACTS (via Vector Search)
+            MATCHED CONTRACTS ({entry.relatedMarkets.length})
           </div>
-          {entry.relatedMarkets.slice(0, expanded ? 5 : 2).map((q, i) => (
+          {entry.relatedMarkets.slice(0, expanded ? 5 : 3).map((q, i) => (
             <div key={i} style={{ fontSize: 10, color: 'var(--text-secondary)', lineHeight: 1.5, paddingLeft: 8, borderLeft: '2px solid var(--cyan)33', marginBottom: 3 }}>
               {q.length > 80 ? `${q.slice(0, 80)}…` : q}
             </div>
           ))}
+          {!expanded && entry.relatedMarkets.length > 3 && (
+            <div style={{ fontSize: 9, color: 'var(--text-muted)', paddingLeft: 8 }}>
+              +{entry.relatedMarkets.length - 3} more
+            </div>
+          )}
         </div>
       )}
 

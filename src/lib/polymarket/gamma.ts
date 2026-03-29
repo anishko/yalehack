@@ -54,6 +54,14 @@ export async function fetchMarketById(conditionId: string): Promise<GammaMarket 
   }
 }
 
+export async function fetchResolvedMarkets(limit = 100, offset = 0): Promise<GammaMarket[]> {
+  try {
+    return await gammaFetch<GammaMarket[]>(`/markets?closed=true&limit=${limit}&offset=${offset}`);
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchEvents(limit = 50): Promise<unknown[]> {
   try {
     return await gammaFetch<unknown[]>(`/events?active=true&limit=${limit}`);

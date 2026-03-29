@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchActiveMarkets, searchMarkets } from '@/lib/polymarket/gamma';
 import { enrichMarkets } from '@/lib/polymarket/enricher';
+import { upsertMarkets, cleanStaleMarkets } from '@/lib/mongodb/markets';
+import type { StoredMarket } from '@/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -30,6 +32,27 @@ export async function GET(req: NextRequest) {
     } else if (sort === 'risk') {
       enriched.sort((a, b) => (a.riskScore ?? 50) - (b.riskScore ?? 50));
     }
+
+    // Persist to MongoDB with auto-embedding (non-blocking)
+    // This populates the vector search index so intel sidebar can find related contracts
+    const storedMarkets: StoredMarket[] = enriched.map(m => ({
+      conditionId: m.conditionId,
+      question: m.question,
+      description: m.description,
+      category: m.category,
+      tags: m.tags,
+      active: m.active,
+      volume: m.volume,
+      liquidity: m.liquidity,
+      tokens: m.tokens,
+      ingestedAt: Date.now(),
+      updatedAt: Date.now(),
+    }));
+    upsertMarkets(storedMarkets).catch(err =>
+      console.error('[markets] failed to persist/embed:', err)
+    );
+    // Clean markets not updated in the last 48 hours (expired/closed)
+    cleanStaleMarkets().catch(() => {});
 
     return NextResponse.json({ markets: enriched, total: enriched.length });
   } catch (err) {

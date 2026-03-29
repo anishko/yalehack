@@ -1,7 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { searchGoogleNews } from '@/lib/scraper/google-news';
 import { getEmbedding } from '@/lib/embeddings';
-import { vectorSearchMarkets } from '@/lib/mongodb/markets';
+import { cosineSimilarity } from '@/lib/embeddings';
+import { vectorSearchMarkets, getStoredMarkets } from '@/lib/mongodb/markets';
 import type { IntelEntry, ReliabilityTier } from '@/types';
 import { nanoid } from '@/lib/alpha/utils';
 
@@ -63,14 +64,46 @@ export async function factCheck(raw: string, relatedMarketQuestion?: string): Pr
 
   const { reliability, tier } = computeReliability(sourceCount, type);
 
-  // ── Vector search: find related Polymarket contracts ────────────────────────
+  // ── Find related Polymarket contracts ────────────────────────────────────────
+  // Strategy: embed the claim, then rank ALL stored markets by cosine similarity.
+  // This works without a MongoDB Atlas vector search index — pure computation.
   let relatedMarkets: string[] = [];
   try {
     const claimEmbedding = await getEmbedding(claimText);
-    const matchedMarkets = await vectorSearchMarkets(claimEmbedding, 5);
-    relatedMarkets = matchedMarkets.map(m => m.question);
+
+    // 1) Try Atlas $vectorSearch first (fastest if index exists)
+    const vsResults = await vectorSearchMarkets(claimEmbedding, 5);
+    if (vsResults.length > 0) {
+      relatedMarkets = vsResults.map(m => m.question);
+    }
+
+    // 2) Fallback: brute-force cosine similarity against all stored markets
+    if (relatedMarkets.length === 0) {
+      const allMarkets = await getStoredMarkets(500);
+      const scored = allMarkets
+        .filter(m => m.embedding && m.embedding.length > 0)
+        .map(m => ({
+          question: m.question,
+          score: cosineSimilarity(claimEmbedding, m.embedding!),
+        }))
+        .filter(m => m.score > 0.3) // only reasonably related
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5);
+      relatedMarkets = scored.map(m => m.question);
+    }
   } catch (err) {
-    console.error('[factCheck] vector search for related markets failed:', err);
+    console.error('[factCheck] embedding/similarity search failed:', err);
+  }
+
+  // 3) Last resort: Polymarket Gamma API text search (no embeddings needed)
+  if (relatedMarkets.length === 0) {
+    try {
+      const { searchMarkets } = await import('@/lib/polymarket/gamma');
+      const gammaResults = await searchMarkets(claimText.slice(0, 80), 5);
+      relatedMarkets = gammaResults
+        .filter(m => m.active && !m.closed)
+        .map(m => m.question);
+    } catch {}
   }
 
   // ── Claude analysis — now also classifies market direction ────────────────
@@ -88,12 +121,13 @@ export async function factCheck(raw: string, relatedMarketQuestion?: string): Pr
 
 Claim: "${claimText}"
 ${relatedMarketQuestion ? `Related market: "${relatedMarketQuestion}"` : ''}
-${relatedMarkets.length ? `Matching Polymarket contracts:\n${relatedMarkets.slice(0, 3).map(q => `- ${q}`).join('\n')}` : ''}
 ${context ? `Corroborating news:\n${context}` : 'No corroborating news found.'}
 
+IMPORTANT: Focus on whether the claim itself is TRUE or FALSE based on the news sources. Do NOT factor in whether prediction market contracts exist for this topic.
+
 Respond in this exact format (2 lines):
-DIRECTION: CONFIRMS or CONTRADICTS or NEUTRAL  (does this intel support the YES outcome of the related market, contradict it, or is it neutral/unrelated?)
-ANALYSIS: <1-2 sentence analysis of reliability and market impact>`,
+DIRECTION: CONFIRMS or CONTRADICTS or NEUTRAL  (is this claim confirmed as true by sources = CONFIRMS, denied/debunked = CONTRADICTS, or unclear/no sources = NEUTRAL)
+ANALYSIS: <1-2 sentence analysis of the claim's reliability and real-world impact>`,
       }],
     });
 
