@@ -5,6 +5,7 @@ import type { RankedSignal } from '@/types';
 import RiskBadge from '@/components/shared/RiskBadge';
 import { edgeScoreColor } from '@/lib/alpha/sharpe';
 import Tooltip from '@/components/shared/Tooltip';
+import { useMagneticCard } from '@/hooks/useMagneticCard';
 
 const SCANNER_COLORS: Record<string, string> = {
   ARB: '#22c55e', SPREAD: '#06b6d4', VELOCITY: '#eab308',
@@ -48,6 +49,7 @@ export default function SignalCard({ signal, cash = 10000 }: { signal: RankedSig
   const [betResult, setBetResult] = useState<string | null>(null);
   const [ciLevel, setCiLevel] = useState(95);
 
+  const { ref: cardRef, handleMouseMove, handleMouseLeave } = useMagneticCard();
   const color = SCANNER_COLORS[signal.scannerType];
   const esColor = edgeScoreColor(signal.edgeScore);
   const ci = edgeCI(signal.expectedEdge, signal.confidence, ciLevel);
@@ -84,15 +86,19 @@ export default function SignalCard({ signal, cash = 10000 }: { signal: RankedSig
   };
 
   return (
-    <div style={{
-      background: 'var(--bg-card)',
-      border: `1px solid ${color}33`,
-      borderRadius: 10,
-      padding: 14,
-      display: 'flex',
-      flexDirection: 'column',
-      gap: 10,
-    }}>
+    <div
+      ref={cardRef}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      className="glass-card spotlight-card tilt-card"
+      style={{
+        padding: 14,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+        borderColor: `${color}33`,
+      }}
+    >
       {/* Header row */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

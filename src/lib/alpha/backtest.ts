@@ -294,6 +294,7 @@ async function fetchHistoricalTrades(
           const shares = positionSize / costBasis;
           const pnl = outcome.won ? shares * 1.0 - positionSize : -positionSize;
           const returnPct = outcome.won ? ((1.0 - costBasis) / costBasis) * 100 : -100;
+            
 
           const entryTimestamp = entryPrices[entryPrices.length - 1]?.t
             ? entryPrices[entryPrices.length - 1].t * 1000 // convert seconds to ms if needed

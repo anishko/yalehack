@@ -170,7 +170,7 @@ export default function HomePage() {
           )}
           {/* Signals tab */}
           {tab === 'signals' && (
-            <>
+            <div>
               {scanning && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'var(--cyan-dim)', border: '1px solid var(--cyan)', borderRadius: 8, marginBottom: 16, fontSize: 13, color: 'var(--cyan)' }}>
                   <span className="spin">⟳</span>
@@ -183,13 +183,13 @@ export default function HomePage() {
                   <p>No signals yet. Click <strong style={{ color: 'var(--cyan)' }}>SCAN NOW</strong> to run the scanners.</p>
                 </div>
               ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
                   {scanning && signals.length === 0
                     ? Array(6).fill(0).map((_, i) => <SkeletonCard key={i} />)
                     : filteredSignals.map(s => <SignalCard key={s.id} signal={s} cash={portfolio.cash} />)}
                 </div>
               )}
-            </>
+            </div>
           )}
 
           {tab === 'sports' && (

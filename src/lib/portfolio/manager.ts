@@ -186,6 +186,15 @@ export async function deposit(amount: number): Promise<{ success: boolean; newBa
   return { success: true, newBalance: portfolio.cash };
 }
 
+export async function resetBalance(): Promise<{ success: boolean; newBalance: number }> {
+  const portfolio = await getPortfolio();
+  portfolio.cash = INITIAL_BALANCE;
+  portfolio.positions = [];
+  portfolio.deposits.push({ amount: -(portfolio.cash - INITIAL_BALANCE), timestamp: Date.now() });
+  await savePortfolio(portfolio);
+  return { success: true, newBalance: INITIAL_BALANCE };
+}
+
 export async function getTradeHistory(): Promise<TradeRecord[]> {
   const portfolio = await getPortfolio();
   return portfolio.trades.slice().reverse();

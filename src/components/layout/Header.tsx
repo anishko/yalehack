@@ -33,8 +33,10 @@ export default function Header({ onScan }: { onScan?: () => void }) {
   return (
     <>
       <header style={{
-        background: 'var(--bg-card)',
-        borderBottom: '1px solid var(--border)',
+        background: 'rgba(17,17,20,0.85)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
         padding: '0 20px',
         position: 'sticky', top: 0, zIndex: 100,
       }}>
@@ -77,9 +79,13 @@ export default function Header({ onScan }: { onScan?: () => void }) {
                 color: 'var(--cyan)', fontSize: 12, fontWeight: 700,
                 cursor: isScanning ? 'not-allowed' : 'pointer',
                 display: 'flex', alignItems: 'center', gap: 6,
+                transition: 'transform 0.15s ease',
               }}
+              onMouseDown={e => { if (!isScanning) (e.currentTarget.style.transform = 'scale(0.96)'); }}
+              onMouseUp={e => { e.currentTarget.style.transform = 'scale(1)'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}
             >
-              {isScanning ? <><span className="spin" style={{ fontSize: 14 }}>⟳</span> SCANNING</> : '⚡ SCAN NOW'}
+              {isScanning ? 'SCANNING...' : '⚡ SCAN NOW'}
             </button>
 
             <Link href="/portfolio" style={{ textDecoration: 'none' }}>
