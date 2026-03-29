@@ -142,4 +142,9 @@ export async function ensureAllIndexes(): Promise<void> {
   const articles = db.collection('articles');
   await articles.createIndex({ timestamp: -1 });
   await articles.createIndex({ ingestedAt: 1 }, { expireAfterSeconds: 604800 }); // 7 days TTL
+
+  // Correlations collection
+  const correlations = db.collection('correlations');
+  await correlations.createIndex({ category1: 1, category2: 1 }, { unique: true });
+  await correlations.createIndex({ computedAt: -1 });
 }

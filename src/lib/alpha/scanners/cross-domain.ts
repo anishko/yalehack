@@ -1,9 +1,13 @@
 import type { PolymarketMarket, RankedSignal } from '@/types';
 import { getOverview, ASSET_MARKET_KEYWORDS, type FinnhubQuote } from '@/lib/finnhub/client';
+import { getEmbedding } from '@/lib/embeddings';
+import { vectorSearchMarkets } from '@/lib/mongodb/markets';
 import { nanoid } from '../utils';
 
 // Scanner 6: Cross-Domain Finance
 // Financial assets move → linked Polymarket markets should follow but haven't
+// Uses MongoDB Vector Search to dynamically discover stock-market linkages
+// instead of relying solely on hardcoded keyword mappings.
 
 interface AssetSignal {
   symbol: string;
@@ -14,17 +18,56 @@ interface AssetSignal {
   keywords: string[];
 }
 
-function findLinkedMarkets(
+async function findLinkedMarkets(
   assetSignal: AssetSignal,
   markets: PolymarketMarket[]
-): PolymarketMarket[] {
+): Promise<PolymarketMarket[]> {
+  // 1) Keyword match (fast, local) — existing logic
   const keywords = ASSET_MARKET_KEYWORDS[assetSignal.symbol] || [];
   const q = assetSignal.label.toLowerCase();
-
-  return markets.filter(m => {
+  const keywordMatches = markets.filter(m => {
     const mq = m.question.toLowerCase();
     return keywords.some(kw => mq.includes(kw)) || mq.includes(q);
   });
+
+  // 2) Vector search (semantic, via MongoDB Atlas) — discovers non-obvious linkages
+  //    e.g. "Lockheed Martin quarterly earnings" → "Will the US strike Iran?"
+  let vectorMatches: PolymarketMarket[] = [];
+  try {
+    const searchText = `${assetSignal.label} ${assetSignal.symbol} ${assetSignal.direction === 'UP' ? 'rising' : 'falling'} ${assetSignal.magnitude.toFixed(1)}% ${keywords.join(' ')}`;
+    const embedding = await getEmbedding(searchText);
+    const stored = await vectorSearchMarkets(embedding, 5);
+    // Convert StoredMarket → PolymarketMarket shape (just need conditionId + question)
+    vectorMatches = stored
+      .filter(sm => !keywordMatches.some(km => km.conditionId === sm.conditionId))
+      .map(sm => {
+        // Find full market in the live list, or create minimal object
+        const live = markets.find(m => m.conditionId === sm.conditionId);
+        return live ?? {
+          id: sm.conditionId,
+          conditionId: sm.conditionId,
+          question: sm.question,
+          active: true,
+          closed: false,
+          archived: false,
+          tokens: sm.tokens ?? [],
+          midPrice: undefined,
+        } as PolymarketMarket;
+      });
+  } catch {
+    // Vector search unavailable — fall through to keyword-only
+  }
+
+  // Combine, dedup by conditionId
+  const seen = new Set<string>();
+  const combined: PolymarketMarket[] = [];
+  for (const m of [...keywordMatches, ...vectorMatches]) {
+    if (!seen.has(m.conditionId)) {
+      seen.add(m.conditionId);
+      combined.push(m);
+    }
+  }
+  return combined;
 }
 
 function hasMarketPriceReacted(market: PolymarketMarket, assetDirection: 'UP' | 'DOWN'): boolean {
@@ -53,7 +96,7 @@ export async function scanCrossDomain(markets: PolymarketMarket[]): Promise<Rank
     .sort((a, b) => b.magnitude - a.magnitude);
 
   for (const mover of movers.slice(0, 5)) {
-    const linked = findLinkedMarkets(mover, markets);
+    const linked = await findLinkedMarkets(mover, markets);
 
     for (const market of linked) {
       if (!market.active || market.closed) continue;

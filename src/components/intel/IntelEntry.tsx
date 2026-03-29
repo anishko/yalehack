@@ -10,7 +10,7 @@ export default function IntelEntryCard({ entry }: { entry: IntelEntry }) {
 
   const claimTruncated  = entry.claim.length > 120;
   const analysisTruncated = entry.aiAnalysis && entry.aiAnalysis.length > 150;
-  const canExpand = claimTruncated || analysisTruncated;
+  const canExpand = claimTruncated || analysisTruncated || entry.relatedMarkets.length > 2;
 
   return (
     <div style={{
@@ -44,6 +44,20 @@ export default function IntelEntryCard({ entry }: { entry: IntelEntry }) {
             ? entry.aiAnalysis
             : `${entry.aiAnalysis.slice(0, 150)}…`}
         </p>
+      )}
+
+      {/* Matched Polymarket contracts via vector search */}
+      {entry.relatedMarkets.length > 0 && (expanded || entry.relatedMarkets.length <= 2) && (
+        <div style={{ marginBottom: 6 }}>
+          <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--cyan)', letterSpacing: '0.05em', marginBottom: 4 }}>
+            MATCHED CONTRACTS (via Vector Search)
+          </div>
+          {entry.relatedMarkets.slice(0, expanded ? 5 : 2).map((q, i) => (
+            <div key={i} style={{ fontSize: 10, color: 'var(--text-secondary)', lineHeight: 1.5, paddingLeft: 8, borderLeft: '2px solid var(--cyan)33', marginBottom: 3 }}>
+              {q.length > 80 ? `${q.slice(0, 80)}…` : q}
+            </div>
+          ))}
+        </div>
       )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 10, color: 'var(--text-muted)' }}>

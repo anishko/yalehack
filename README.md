@@ -108,6 +108,35 @@ Live Polymarket data (prices, volumes, order book snapshots) is cached in MongoD
 ### 4. Portfolio + Trade Log Persistence
 All simulated positions, trade history, P&L snapshots, and Intel entries are stored in MongoDB collections. The walk-forward backtester writes results to MongoDB for the frontend to query and visualize.
 
+### 5. Aggregation Pipeline — Category Analytics Engine
+A multi-stage aggregation pipeline runs entirely server-side in MongoDB — zero data pulled to Node.js until the final result. Demonstrates advanced MongoDB features:
+
+```javascript
+// GET /api/analytics?days=7
+db.collection('signals').aggregate([
+  { $match: { timestamp: { $gte: cutoff } } },
+  { $facet: {
+      byCategory: [
+        { $group: { _id: '$category', signalCount: { $sum: 1 }, avgConfidence: { $avg: '$confidence' } } },
+        { $lookup: { from: 'trades', let: { cat: '$_id' },
+            pipeline: [
+              { $match: { $expr: { $eq: ['$category', '$$cat'] } } },
+              { $group: { _id: null, totalPnl: { $sum: '$pnl' }, wins: { $sum: { $cond: ... } } } }
+            ], as: 'tradeStats' } },
+        { $sort: { signalCount: -1 } }
+      ],
+      overall: [ { $group: { _id: null, totalSignals: { $sum: 1 }, ... } },
+                  { $lookup: { from: 'trades', ... } } ],
+      topSignals: [ { $sort: { confidence: -1 } }, { $limit: 5 } ]
+  }}
+]);
+```
+
+Pipeline stages used: `$match`, `$group`, `$lookup` (cross-collection JOIN), `$facet` (parallel sub-pipelines), `$sort`, `$project`, `$cond`, `$expr`, `$arrayElemAt`, `$addToSet`, `$unwind`.
+
+### 6. Correlations — Precomputed Category Correlation Matrix
+The `correlations` collection stores Pearson correlation coefficients between category edge scores (e.g. Sports vs Crypto signal correlation = -0.12). Used by the optimizer to diversify bets across uncorrelated categories. Recomputed via `POST /api/analytics`.
+
 ### Collection Schema
 ```
 polyedge (database)
